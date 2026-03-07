@@ -1,0 +1,62 @@
+/* Login View Scoped Styles */
+
+.login-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #3f3f46 0%, #09090b 100%);
+    z-index: 1000;
+    -webkit-app-region: drag;
+}
+
+.login-panel {
+    -webkit-app-region: no-drag;
+    width: 100%;
+    max-width: 440px;
+    padding: 48px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    box-sizing: border-box;
+    margin: 20px;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-header .brand {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.error-message {
+    color: var(--accent-red);
+    font-size: 0.85rem;
+    text-align: center;
+    background: rgba(239, 68, 68, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}

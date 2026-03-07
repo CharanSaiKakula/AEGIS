@@ -1,0 +1,135 @@
+/* Admin View Scoped Styles */
+
+.admin-dashboard {
+  display: grid;
+  grid-template-columns: 300px 1fr 300px;
+  grid-template-rows: auto 1fr;
+  gap: var(--spacing-lg);
+  height: 100%;
+}
+
+/* Sidebars */
+.admin-sidebar-left,
+.admin-sidebar-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Drone Fleet List */
+.drone-list-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.drone-list-item:hover {
+  background: rgba(0, 240, 255, 0.05);
+  border-color: rgba(0, 240, 255, 0.3);
+}
+
+.drone-list-item.selected {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.battery-bar {
+  width: 50px;
+  height: 6px;
+  background: var(--bg-dark);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.battery-fill {
+  height: 100%;
+  background: var(--accent-green);
+}
+
+.battery-fill.low { background: var(--accent-orange); }
+.battery-fill.critical { background: var(--accent-red); }
+
+/* Main Video / Map Area Grid */
+.admin-main-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.video-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+  flex: 1;
+}
+
+.video-feed {
+  background: #000;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--panel-radius);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.6);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: monospace;
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+}
+
+.ai-box {
+  position: absolute;
+  border: 1px solid var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ai-label {
+  position: absolute;
+  top: -20px;
+  left: -1px;
+  background: var(--text-main);
+  color: var(--bg-dark);
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 2px 4px;
+}
+
+/* Logs and Alerts */
+.log-entry {
+  font-family: monospace;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.log-entry.critical {
+  color: var(--accent-red);
+}
+
+.log-entry.warning {
+  color: var(--accent-orange);
+}
+
+/* Control Panel Grid */
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}

@@ -1,0 +1,206 @@
+:root {
+  /* Minimalistic Black/Gray Palette */
+  --bg-dark: #09090b;
+  --bg-panel: #18181b;
+  --bg-panel-hover: #27272a;
+  
+  --accent-cyan: #e4e4e7; /* Soft white/gray accent instead of cyan */
+  --accent-blue: #a1a1aa; /* Muted gray for secondary */
+  --accent-red: #ef4444; /* Keep a muted red for critical alerts */
+  --accent-green: #22c55e; /* Keep a muted green for status OK */
+  --accent-orange: #f59e0b; /* Keep a muted orange for warnings */
+
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
+
+  --border-glow: #3f3f46;
+  --border-subtle: #27272a;
+  
+  /* Layout & Metrics */
+  --panel-radius: 12px;
+  --btn-radius: 8px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: linear-gradient(135deg, #3f3f46 0%, #09090b 100%);
+  color: var(--text-main);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Glassmorphism Panel Base */
+.glass-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--panel-radius);
+  padding: var(--spacing-md);
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-glow);
+}
+
+/* Typography */
+h1, h2, h3, h4 {
+  color: var(--text-main);
+  font-weight: 500;
+  letter-spacing: 0px;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.text-accent { color: var(--text-main); }
+.text-danger { color: var(--accent-red); }
+.text-success { color: var(--accent-green); }
+.text-muted { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Buttons */
+.btn {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  padding: 8px 16px;
+  border-radius: var(--btn-radius);
+  cursor: pointer;
+  font-weight: 400;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn:hover {
+  background: var(--bg-panel-hover);
+}
+
+.btn-primary {
+  background: var(--text-main);
+  border-color: var(--text-main);
+  color: var(--bg-dark);
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background: #d4d4d8;
+  border-color: #d4d4d8;
+}
+
+.btn-danger {
+  background: transparent;
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Utilities */
+.flex-row { display: flex; align-items: center; gap: var(--spacing-md); }
+.flex-col { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.space-between { justify-content: space-between; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+/* Main App Layout */
+#app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Header bar */
+.top-nav {
+  height: 60px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--spacing-lg);
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+  -webkit-app-region: drag; /* Electron drag area */
+}
+
+.top-nav .brand {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-nav .nav-controls {
+  -webkit-app-region: no-drag;
+}
+
+/* View Container */
+#view-container {
+  flex: 1;
+  padding: var(--spacing-lg);
+  overflow-y: auto;
+  position: relative;
+}
+
+/* View Switcher Hide Class */
+.hidden {
+  display: none !important;
+}
+
+/* Keyframes for micro-animations */
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 5px rgba(0, 240, 255, 0.2); }
+  50% { box-shadow: 0 0 15px rgba(0, 240, 255, 0.6); }
+  100% { box-shadow: 0 0 5px rgba(0, 240, 255, 0.2); }
+}
+
+@keyframes pulseDanger {
+  0% { box-shadow: 0 0 5px rgba(255, 51, 102, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(255, 51, 102, 0.8); }
+  100% { box-shadow: 0 0 5px rgba(255, 51, 102, 0.2); }
+}
+
+.animate-pulse {
+  animation: pulseGlow 2s infinite;
+}
+.animate-pulse-danger {
+  animation: pulseDanger 1s infinite;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

@@ -1,0 +1,192 @@
+/* User View Scoped Styles */
+
+.user-dashboard {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    grid-template-rows: auto 1fr;
+    gap: var(--spacing-lg);
+    height: 100%;
+}
+
+/* Auth / Profile Panel */
+.user-sidebar {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bg-dark);
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+/* Forms */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.form-input {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--btn-radius);
+    padding: 10px;
+    color: var(--text-main);
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+}
+
+/* Request Escort Panel */
+.request-panel {
+    margin-top: auto;
+}
+
+/* Map / Video Main Area */
+.user-main-area {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.viewport-container {
+    flex: 1;
+    position: relative;
+    border-radius: var(--panel-radius);
+    overflow: hidden;
+    background: #000;
+    border: 1px solid var(--border-subtle);
+}
+
+/* Mock Map Background */
+.mock-map-bg {
+    position: absolute;
+    inset: 0;
+    /* Create a grid that looks like a map */
+    background-color: #1a202c;
+    background-image: 
+      linear-gradient(rgba(0, 240, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.6;
+}
+
+/* Floating Elements on Map */
+.map-overlay {
+    position: absolute;
+    z-index: 10;
+}
+
+.mission-stats {
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    background: rgba(10, 14, 23, 0.85);
+    backdrop-filter: blur(8px);
+    min-width: 200px;
+}
+
+.drone-status-widget {
+    top: var(--spacing-md);
+    right: var(--spacing-md);
+    background: rgba(10, 14, 23, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-green);
+}
+
+.emergency-btn-container {
+    bottom: var(--spacing-lg);
+    right: var(--spacing-lg);
+}
+
+.btn-panic {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    font-size: 1rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    background: var(--accent-red);
+    color: var(--text-main);
+    border: none;
+}
+
+.btn-panic:hover {
+    transform: scale(1.05);
+    background: #dc2626;
+}
+
+/* Mission History / Timeline Strip */
+.timeline-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md) 0;
+    position: relative;
+}
+
+.timeline-strip::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 20px;
+    right: 20px;
+    height: 2px;
+    background: var(--border-subtle);
+    z-index: 0;
+}
+
+.timeline-step {
+    position: relative;
+    z-index: 1;
+    background: var(--bg-panel);
+    padding: 5px 15px;
+    border-radius: 20px;
+    border: 1px solid var(--border-subtle);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.timeline-step.active {
+    border-color: var(--text-main);
+    color: var(--text-main);
+}
