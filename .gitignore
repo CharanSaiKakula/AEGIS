@@ -86,3 +86,7 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+
+# DJITelloPy
+DJITelloPy/

@@ -15,4 +15,5 @@ else
 fi
 
 pip install -e "$REPO_DIR"
-echo "Done. Requirements and DJITelloPy (editable) installed from $REPO_DIR"
+pip install -e "$SCRIPT_DIR"
+echo "Done. Requirements, DJITelloPy, and aegis CLI installed."

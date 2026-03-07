@@ -5,6 +5,7 @@ import time
 t = Tello()
 
 try:
+    time.sleep(1)
     t.connect()
     print("Battery:", t.get_battery(), "%")
 
