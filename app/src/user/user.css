@@ -51,7 +51,7 @@
 }
 
 .form-input {
-    background: rgba(0,0,0,0.3);
+    background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--btn-radius);
     padding: 10px;
@@ -75,7 +75,7 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--btn-radius);
     margin-top: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     z-index: 50;
     overflow: hidden;
     max-height: 200px;
@@ -87,7 +87,7 @@
     cursor: pointer;
     font-size: 0.85rem;
     color: var(--text-main);
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     transition: background 0.2s ease;
 }
 
@@ -134,9 +134,9 @@
     inset: 0;
     /* Create a grid that looks like a map */
     background-color: #1a202c;
-    background-image: 
-      linear-gradient(rgba(0, 240, 255, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+    background-image:
+        linear-gradient(rgba(0, 240, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
     background-size: 50px 50px;
     opacity: 0.6;
 }
@@ -147,85 +147,622 @@
     z-index: 10;
 }
 
-.mission-stats {
-    top: var(--spacing-md);
-    left: var(--spacing-md);
-    background: rgba(10, 14, 23, 0.85);
-    backdrop-filter: blur(8px);
-    min-width: 200px;
+/* New UI Rebuild */
+
+.glass-panel {
+    background: rgba(25, 30, 36, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 20px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
-.drone-status-widget {
-    top: var(--spacing-md);
-    right: var(--spacing-md);
-    background: rgba(10, 14, 23, 0.85);
-    backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    gap: 12px;
+.glass-panel-dark {
+    background: rgba(10, 15, 20, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 8px;
+    padding: 10px 15px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
-.status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent-green);
+.profile-card {
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(30, 36, 45, 0.9), rgba(15, 20, 25, 0.9));
 }
 
-.emergency-btn-container {
-    bottom: var(--spacing-lg);
-    right: var(--spacing-lg);
+.request-card {
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(30, 36, 45, 0.9), rgba(15, 20, 25, 0.9));
+    flex: 1;
 }
 
-.btn-panic {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    font-size: 1rem;
+.btn-deploy {
+    background: linear-gradient(90deg, rgba(180, 140, 0, 0.8), rgba(242, 202, 54, 0.8));
+    border: 1px solid rgba(255, 200, 0, 0.6);
+    box-shadow: 0 0 15px rgba(255, 200, 0, 0.2);
+    border-radius: 8px;
     font-weight: bold;
-    text-transform: uppercase;
-    background: var(--accent-red);
-    color: var(--text-main);
-    border: none;
+    letter-spacing: 1px;
+    padding: 12px;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-.btn-panic:hover {
-    transform: scale(1.05);
-    background: #dc2626;
+.btn-deploy:hover {
+    background: linear-gradient(90deg, rgba(200, 160, 0, 0.8), rgba(255, 210, 0, 0.8));
+    box-shadow: 0 0 25px rgba(255, 200, 0, 0.4);
 }
 
-/* Mission History / Timeline Strip */
-.timeline-strip {
+/* Timeline pill */
+.timeline-pill-container {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+}
+
+.timeline-pill {
     display: flex;
-    justify-content: space-between;
+    gap: 12px;
     align-items: center;
-    padding: var(--spacing-md) 0;
-    position: relative;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    border-radius: 20px;
+    padding: 8px 24px;
 }
 
-.timeline-strip::before {
+.timeline-pill .arrow {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+.timeline-pill .active {
+    color: white;
+    font-weight: bold;
+    border-bottom: 2px solid var(--accent-cyan);
+    padding-bottom: 2px;
+}
+
+/* Map specific overlays matching the mock */
+.status-pill-tl {
+    top: 100px;
+    left: 40px;
+    min-width: 160px;
+}
+
+.status-pill-bl {
+    bottom: 40px;
+    left: 120px;
+    min-width: 160px;
+}
+
+.eta-pill-tr {
+    top: 100px;
+    right: 40px;
+    min-width: 160px;
+}
+
+.eta-pill-br {
+    bottom: 40px;
+    right: 40px;
+    min-width: 160px;
+}
+
+/* SOS Tab */
+.sos-tab {
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    border-radius: 0 12px 12px 0;
+    border-left: none;
+    padding: 20px 10px;
+    font-weight: bold;
+    color: var(--text-main);
+    cursor: pointer;
+    background: rgba(20, 25, 30, 0.85);
+}
+
+.sos-tab:hover {
+    background: rgba(40, 25, 30, 0.9);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+    box-shadow: 0 0 15px rgba(255, 50, 50, 0.3);
+}
+
+/* Custom Signal Bars */
+.bars {
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 14px;
+}
+
+.bars span {
+    width: 3px;
+    background: var(--accent-cyan);
+    border-radius: 1px;
+}
+
+.bars span:nth-child(1) {
+    height: 6px;
+}
+
+.bars span:nth-child(2) {
+    height: 8px;
+}
+
+.bars span:nth-child(3) {
+    height: 10px;
+}
+
+.bars span:nth-child(4) {
+    height: 12px;
+}
+
+.bars span:nth-child(5) {
+    height: 14px;
+}
+
+.bars span.dim {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Remove old stuff that conflicted via global map-overlay */
+.viewport-container .map-overlay {
+    position: absolute;
+    z-index: 10;
+}
+
+/* Custom Marker Styles */
+.custom-marker-user {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-center {
+    font-size: 0.45rem;
+    font-weight: bold;
+    color: #1a202c;
+    background: #00f0ff;
+    padding: 2px 4px;
+    border-radius: 50%;
+    z-index: 2;
+    box-shadow: 0 0 8px #00f0ff;
+}
+
+.pulse-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.4);
+    animation: pulse 2s infinite ease-out;
+    z-index: 1;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.custom-marker-drone span {
+    text-shadow: 0 0 12px #00f0ff;
+}
+
+.sentry-marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.sentry-icon {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sentry-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* Picture in Picture Live Feed */
+.pip-container {
+    position: absolute;
+    bottom: 25px;
+    right: 35px;
+    width: 320px;
+    height: 200px;
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 0;
+    border: 2px solid rgba(0, 240, 255, 0.4);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+    z-index: 20;
+}
+
+.pip-video-feed {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    /* Simulated Drone Camera background: urban texture or dark gradient */
+    background: linear-gradient(135deg, #11151a 0%, #0d2128 100%);
+    color: rgba(0, 240, 255, 0.8);
+    font-family: 'Inter', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+}
+
+/* Static Scanlines Effect */
+.scanlines {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0.4;
+}
+
+.hud-top-left {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #ff3366;
+    font-weight: bold;
+    z-index: 10;
+}
+
+.rec-dot {
+    width: 8px;
+    height: 8px;
+    background: #ff3366;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #ff3366;
+    animation: marker-pulse 1.5s infinite;
+}
+
+.hud-top-right {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    letter-spacing: 1px;
+    z-index: 10;
+}
+
+.hud-bottom-left {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    color: var(--accent-green);
+    letter-spacing: 1px;
+    z-index: 10;
+}
+
+.hud-bottom-right {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    letter-spacing: 1px;
+    z-index: 10;
+}
+
+.hud-left-edge {
+    position: absolute;
+    top: 50%;
+    left: -10px;
+    transform: translateY(-50%) rotate(-90deg);
+    letter-spacing: 1px;
+    z-index: 10;
+}
+
+.hud-right-edge {
+    position: absolute;
+    top: 50%;
+    right: -15px;
+    transform: translateY(-50%) rotate(90deg);
+    letter-spacing: 1px;
+    z-index: 10;
+}
+
+.hud-horizon-line {
+    position: absolute;
+    top: 50%;
+    left: 15%;
+    right: 15%;
+    height: 1px;
+    background: rgba(0, 240, 255, 0.3);
+    z-index: 2;
+    transform: translateY(-50%);
+}
+
+.target-lock {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.tl-circle {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    border: 1px dashed rgba(0, 240, 255, 0.6);
+    border-radius: 50%;
+    animation: pulse-slow 3s infinite linear;
+}
+
+.tl-crosshair {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-left: 2px solid rgba(0, 240, 255, 0.8);
+    border-right: 2px solid rgba(0, 240, 255, 0.8);
+    background: transparent;
+    clip-path: polygon(0 40%, 100% 40%, 100% 60%, 0 60%);
+}
+
+.tl-crosshair::before {
     content: '';
     position: absolute;
     top: 50%;
-    left: 20px;
-    right: 20px;
-    height: 2px;
-    background: var(--border-subtle);
-    z-index: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #00f0ff;
+    box-shadow: 0 0 10px #00f0ff;
 }
 
-.timeline-step {
-    position: relative;
-    z-index: 1;
-    background: var(--bg-panel);
-    padding: 5px 15px;
-    border-radius: 20px;
-    border: 1px solid var(--border-subtle);
+@keyframes pulse-slow {
+    0% {
+        transform: scale(0.9) rotate(0deg);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.1) rotate(180deg);
+        opacity: 0.4;
+    }
+
+    100% {
+        transform: scale(0.9) rotate(360deg);
+        opacity: 0.8;
+    }
+}
+
+.pip-controls {
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 15;
+}
+
+.pip-controls button {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: rgba(0, 240, 255, 0.8);
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
     font-size: 0.8rem;
-    color: var(--text-muted);
 }
 
-.timeline-step.active {
-    border-color: var(--text-main);
-    color: var(--text-main);
+.pip-controls button:hover {
+    background: rgba(0, 240, 255, 0.2);
+    border-color: rgba(0, 240, 255, 0.8);
+}
+
+/* Picture in Picture Live Interactions */
+.pip-fullscreen {
+    position: absolute;
+    width: auto !important;
+    height: auto !important;
+    top: 20px !important;
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 20px !important;
+    z-index: 1000 !important;
+    background: #000;
+}
+
+.pip-video-feed .thermal-mode {
+    filter: sepia(100%) hue-rotate(280deg) saturate(300%) contrast(1.5) invert(10%);
+}
+
+/* SOS Overlay Styles */
+.sos-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10000;
+    background: linear-gradient(180deg, #ff3b30 0%, #1a0000 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: white;
+    font-family: inherit;
+    opacity: 0; 
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.sos-overlay.active {
+    opacity: 1; pointer-events: auto;
+}
+.sos-overlay-header {
+    width: 100%;
+    padding: 20px;
+    display: flex;
+    justify-content: flex-start;
+}
+.sos-back-btn {
+    background: rgba(255, 255, 255, 0.4);
+    border: none; border-radius: 50%; width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: #1a0000;
+}
+.sos-content-box {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center;
+    text-align: center; max-width: 400px; width: 100%;
+    padding: 0 20px;
+}
+.sos-checklist-box {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 20px;
+    width: 100%;
+    text-align: left;
+    margin-top: 20px;
+    margin-bottom: 40px;
+}
+.sos-check-item {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 15px; font-size: 0.95rem; font-weight: 500; opacity: 0.9;
+    transition: opacity 0.3s ease;
+}
+.sos-check-item:last-child { margin-bottom: 0; }
+.sos-circle {
+    width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.6);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease;
+}
+.sos-check-item.checked {
+    opacity: 1;
+}
+.sos-check-item.checked .sos-circle {
+    background: #34C759; border-color: #34C759; color: white;
+}
+.btn-cancel-sos {
+    background: white; color: #1a0000; font-weight: 600;
+    border: none; border-radius: 30px; padding: 15px 0; width: 90%; max-width: 300px;
+    font-size: 1.1rem; cursor: pointer; margin-bottom: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* Add Friends Overlay Styles */
+.add-friends-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10000;
+    background: linear-gradient(180deg, rgba(20, 20, 20, 0.6) 0%, rgba(5, 5, 5, 0.95) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
+    color: white;
+    font-family: inherit;
+    opacity: 0; 
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.add-friends-overlay.active {
+    opacity: 1; pointer-events: auto;
+}
+.add-friends-overlay-header {
+    width: 100%;
+    padding: 20px;
+    display: flex;
+    justify-content: flex-start;
+}
+.add-friends-content-box {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; margin: 0 auto;
+    text-align: center; width: 100%; max-width: 500px;
+    padding: 40px 20px 0 20px;
+}
+.friends-list-container {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+.friend-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 12px 16px;
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+}
+.friend-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 1.1rem;
+    color: white; margin-right: 15px;
+}
+.friend-info {
+    flex: 1;
+    text-align: left;
+}
+.friend-name {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 2px;
+}
+.friend-status {
+    font-size: 0.75rem;
+    color: #a0a0a0;
+}
+.btn-add-friend-action {
+    background: #0a7aff;
+    border: none;
+    border-radius: 16px;
+    color: white;
+    font-weight: 600;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 60px;
+}
+.btn-add-friend-action.added {
+    background: #34C759;
+    padding: 6px;
 }

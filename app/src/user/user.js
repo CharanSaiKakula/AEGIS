@@ -6,122 +6,183 @@ export function renderUserView(container) {
             <!-- Sidebar / Auth & Request Forms -->
             <div class="user-sidebar">
                 
-                <!-- Auth / Profile Mock -->
-                <div class="glass-panel">
-                    <div class="profile-header">
-                        <div class="avatar">C</div>
-                        <div>
-                            <h3 style="margin-bottom: 4px;">Charan</h3>
-                            <span class="text-muted">Student ID: #88291</span>
-                        </div>
-                        <button class="btn" style="padding: 6px; margin-left: auto;">⚙️</button>
+                <!-- REQUEST AEGIS CARD -->
+                <div class="glass-panel request-card" style="display: flex; flex-direction: column; gap: 20px;">
+                    <div style="font-size: 1.15rem; letter-spacing: 1px; color: var(--text-main); font-weight: bold; text-transform: uppercase;">Request AEGIS</div>
+                    
+                    <div class="form-group">
+                        <label>CURRENT LOCATION</label>
+                        <input type="text" class="form-input" value="University & Broadway" id="start-input" readonly>
+                        <button class="btn hidden" id="btn-locate" style="display:none;"></button>
                     </div>
-                </div>
-
-                <!-- Mission History Summary Mock -->
-                <div class="glass-panel" style="flex: 1; overflow-y: auto;">
-                    <h4>Recent History</h4>
-                    <div class="flex-col" style="margin-top: 12px; gap: 8px;">
-                        <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; font-size: 0.85rem;">
-                            <strong>Yesterday, 10:30 PM</strong><br/>
-                            <span class="text-muted">Library to Dorm A (1.2 km)</span><br/>
-                            <span class="text-success" style="font-size: 0.75rem;">✓ Safe Arrival • 0 Alerts</span>
-                        </div>
-                        <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; font-size: 0.85rem;">
-                            <strong>Mar 04, 11:15 PM</strong><br/>
-                            <span class="text-muted">Engineering Bldg to Parking Lot (0.8 km)</span><br/>
-                            <span class="text-success" style="font-size: 0.75rem;">✓ Safe Arrival • 0 Alerts</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Request Escort Form -->
-                <div class="glass-panel request-panel">
-                    <h2 class="text-accent" style="font-size: 1.1rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">Request Drone</h2>
-                    <div class="form-group" style="margin-top: 12px;">
-                        <label>Current Location</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" class="form-input" value="Locating..." id="start-input" readonly style="flex: 1;">
-                            <button class="btn" id="btn-locate" title="Get GPS">📍</button>
-                        </div>
-                    </div>
-                    <div class="form-group" style="margin-top: 12px; position: relative;">
-                        <label>Destination</label>
-                        <input type="text" class="form-input" placeholder="e.g. Dormitory C, East Wing" id="dest-input" autocomplete="off">
+                    
+                    <div class="form-group" style="position: relative;">
+                        <label>DESTINATION</label>
+                        <input type="text" class="form-input" placeholder="E.G." id="dest-input" autocomplete="off">
                         <div id="dest-autocomplete-results" class="autocomplete-dropdown hidden"></div>
                     </div>
                     
-                    <div class="form-group" style="margin-top: 12px;">
-                        <label>Safe Zone Status</label>
-                        <div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(0, 255, 136, 0.1); border-radius: 6px; border: 1px solid var(--accent-green);">
-                            <span class="status-dot"></span>
-                            <span style="font-size: 0.85rem; color: var(--accent-green);">Inside Protected Campus Zone</span>
-                        </div>
+                    <button class="btn btn-deploy" id="btn-request" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding-right: 16px; text-transform: none; font-size: 1rem; font-weight: 600;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+                        Request Drone Escort
+                    </button>
+
+                    <button class="btn" id="btn-emergency-sos" style="background-color: #ff3b30; color: white; border: none; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-transform: none; font-size: 1rem; font-weight: 600; padding: 12px 0;">
+                        <span>Emergency SOS</span>
+                        <span style="font-size: 0.65rem; font-weight: 500; opacity: 0.9; margin-top: 2px;">5-second safety activation</span>
+                    </button>
+
+                    <button id="btn-alert-friends" class="btn" style="background-color: #ff9500; color: white; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: none; font-size: 1rem; font-weight: 600; padding: 12px 0;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                        Alert Friends
+                    </button>
+
+                    <button id="btn-add-friends" class="btn" style="background-color: #0a7aff; color: white; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: none; font-size: 1rem; font-weight: 600; padding: 12px 0;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        Add Friends
+                    </button>
+                    
+                    <div style="text-align: center; margin-top: auto; font-size: 0.70rem; color: rgba(255, 255, 255, 0.4); font-weight: 500; letter-spacing: 0.5px; padding-bottom: 5px;">
+                        AEGIS Autonomous Escort System
                     </div>
 
-                    <button class="btn btn-primary w-full animate-pulse" style="margin-top: 20px; font-size: 1rem; padding: 12px;" id="btn-request">Deploy Drone</button>
                 </div>
             </div>
 
-            <!-- Main Map / Video Area -->
-            <div class="user-main-area">
+            <!-- Main Map Area -->
+            <div class="user-main-area" style="position: relative;">
                 
-                <!-- Status Timeline -->
-                <div class="glass-panel" style="padding: 10px 20px;">
-                    <div class="timeline-strip">
-                        <div class="timeline-step">Request Sent</div>
-                        <div class="timeline-step">Drone Dispatched</div>
-                        <div class="timeline-step">Drone Arriving</div>
-                        <div class="timeline-step">Tracking Active</div>
-                        <div class="timeline-step">Completed</div>
+                <!-- Status Timeline Hovering Above Map -->
+                <div class="timeline-pill-container" style="position: absolute; top: -3px; left: 50%; transform: translateX(-50%); z-index: 100;">
+                    <div class="timeline-pill glass-panel-dark" id="drone-timeline">
+                        <span id="ts-req" class="active">REQUEST</span> <span class="arrow">&gt;</span>
+                        <span id="ts-disp">DISPATCHED</span> <span class="arrow">&gt;</span>
+                        <span id="ts-foll">FOLLOWING</span> <span class="arrow">&gt;</span>
+                        <span id="ts-arr">ARRIVED</span>
                     </div>
                 </div>
 
-                <!-- Live Viewport (Map/Camera) -->
-                <div class="viewport-container" id="user-viewport" style="position: relative;">
-                    <div id="user-map" style="position: absolute; top:0; left:0; right:0; bottom:0; border-radius: 12px; overflow: hidden;"></div>
+                <!-- Live Viewport (Map) -->
+                <div class="viewport-container" id="user-viewport">
+                    <div id="user-map" style="position: absolute; top:0; left:0; right:0; bottom:0; border-radius: inherit;"></div>
                     
-                    <!-- Overlays -->
-                    <div class="map-overlay mission-stats glass-panel">
-                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">MISSION STATUS</div>
-                        <div style="font-size: 1.2rem; font-weight: bold; color: var(--text-main);">Standby</div>
-                        <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem;">
+
+                    
+                    <div class="map-overlay eta-pill-tr glass-panel-dark">
+                        <div style="display: flex; gap: 15px; justify-content: space-between; align-items: center; width: 100%;">
                             <div>
-                                <div class="text-muted">ETA</div>
-                                <div>--:--</div>
+                                <div class="text-muted" style="font-size: 0.65rem; letter-spacing: 0.5px;">ETA:</div>
+                                <div style="font-weight: 500; font-size: 0.85rem; letter-spacing: 0.5px;" id="stat-eta-top">-- min</div>
                             </div>
-                            <div>
-                                <div class="text-muted">Distance</div>
-                                <div>-- mi</div>
+                            <div class="bars"><span></span><span></span><span class="dim"></span><span class="dim"></span><span class="dim"></span></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Picture in Picture AEGIS Feed -->
+                    <div class="pip-container glass-panel-dark">
+                        <div class="pip-video-feed">
+                            <div class="scanlines"></div>
+                            <img id="tello-stream" src="http://127.0.0.1:5505/video_feed" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.8;" onerror="this.src=''; this.alt='Awaiting connection...';" alt="" />
+                            
+                            <!-- HUD Overlays -->
+                            <div class="hud-top-left"><span class="rec-dot"></span> REC</div>
+                            <div class="hud-top-right">HDG: NW</div>
+                            <div class="hud-bottom-left">BATT: 84%</div>
+                            <div class="hud-bottom-right">GPS Lock</div>
+                            
+                            <div class="hud-left-edge">ALT: 15m</div>
+                            <div class="hud-right-edge">SPD: 8km/h</div>
+                            <div class="hud-horizon-line"></div>
+                            
+                            <!-- Target Lock Center -->
+                            <div class="target-lock">
+                                <div class="tl-circle"></div>
+                                <div class="tl-crosshair"></div>
+                            </div>
+                            
+                            <!-- Interactivity Controls -->
+                            <div class="pip-controls">
+                                <button id="btn-thermal" title="Thermal View">🔆</button>
+                                <button id="btn-fullscreen" title="Full Screen">⛶</button>
                             </div>
                         </div>
                     </div>
-
-                    <div class="map-overlay drone-status-widget glass-panel">
-                        <span class="status-dot" style="background: var(--text-muted); box-shadow: none;" id="drone-conn-dot"></span>
-                        <span style="font-size: 0.9rem; font-weight: 500;" id="drone-conn-text">No Drone Assigned</span>
+                    
+                </div>
+            </div>
+            
+            <!-- Emergency SOS Overlay -->
+            <div id="sos-overlay" class="sos-overlay">
+                <div class="sos-overlay-header">
+                    <button id="sos-back-btn" class="sos-back-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                </div>
+                
+                <div class="sos-content-box">
+                    <div class="sos-warning-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" width="64" height="64"><path d="M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-6h-2v4h2v-4z"></path></svg>
                     </div>
-
-                    <!-- Toggle Camera/Map -->
-                    <div class="map-overlay glass-panel" style="top: var(--spacing-md); left: 50%; transform: translateX(-50%); padding: 6px; display: flex; gap: 4px;">
-                        <button class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">GPS Map</button>
-                        <button class="btn" style="padding: 4px 12px; font-size: 0.8rem;">Live Camera</button>
-                        <button class="btn" style="padding: 4px 12px; font-size: 0.8rem; margin-left: 8px;">Toggle AI Overlay</button>
+                    
+                    <h2 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 8px; letter-spacing: 0px;">Emergency Alert Ready</h2>
+                    <p style="font-size: 0.9rem; font-weight: 500; opacity: 0.9; margin-bottom: 24px;">AEGIS drone entering priority mode</p>
+                    
+                    <h3 id="sos-countdown-text" style="font-size: 1.25rem; font-weight: bold; margin-bottom: 15px;">Activating in 5s</h3>
+                    
+                    <div class="sos-checklist-box">
+                        <div class="sos-check-item" id="sos-chk-1">
+                            <div class="sos-circle"></div> <span>Sharing location with campus safety</span>
+                        </div>
+                        <div class="sos-check-item" id="sos-chk-2">
+                            <div class="sos-circle"></div> <span>Notifying emergency contact</span>
+                        </div>
+                        <div class="sos-check-item" id="sos-chk-3">
+                            <div class="sos-circle"></div> <span>Dispatching AEGIS drone</span>
+                        </div>
                     </div>
-
-                    <!-- Share / Panic Buttons -->
-                    <div class="map-overlay glass-panel flex-row" style="bottom: var(--spacing-md); left: var(--spacing-md); padding: 8px;">
-                        <button class="btn">🔗 Share Live Link</button>
-                    </div>
-
-                    <div class="map-overlay emergency-btn-container">
-                        <button class="btn btn-danger btn-panic animate-pulse-danger" id="btn-panic">SOS</button>
-                    </div>
-
-                    <!-- Center Map Markers (Mock) -->
-                    <div class="map-overlay" style="top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; opacity: 0.5;">
-                        <div style="width: 20px; height: 20px; background: var(--accent-blue); border-radius: 50%; box-shadow: 0 0 15px var(--accent-blue);"></div>
-                        <span style="margin-top: 8px; font-size: 0.8rem; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px;">You</span>
+                </div>
+                
+                <button id="btn-cancel-sos" class="btn-cancel-sos">Cancel Emergency</button>
+            </div>
+            
+            <!-- Add Friends Overlay -->
+            <div id="add-friends-overlay" class="add-friends-overlay">
+                <div class="add-friends-overlay-header">
+                    <button id="add-friends-back-btn" class="sos-back-btn" style="background: rgba(255, 255, 255, 0.15); color: white;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                </div>
+                
+                <div class="add-friends-content-box">
+                    <h2 style="font-size: 1.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 0.5px;">Add Friends</h2>
+                    <p style="font-size: 0.95rem; font-weight: 500; color: #b0b0b0; line-height: 1.4; max-width: 250px; margin: 0 auto 30px auto;">Invite friends so they can be alerted during an escort.</p>
+                    
+                    <div class="friends-list-container">
+                        <div class="friend-item">
+                            <div class="friend-avatar" style="background: #2c2c2e;">A</div>
+                            <div class="friend-info">
+                                <div class="friend-name">Alice Johnson</div>
+                            </div>
+                            <button class="btn-add-friend-action">Add</button>
+                        </div>
+                        
+                        <!-- Dummy Contact Item -->
+                        <div class="friend-item">
+                            <div class="friend-avatar" style="background: #2c2c2e;">B</div>
+                            <div class="friend-info">
+                                <div class="friend-name">Bob Smith</div>
+                            </div>
+                            <button class="btn-add-friend-action">Add</button>
+                        </div>
+                        
+                        <!-- Dummy Contact Item -->
+                        <div class="friend-item">
+                            <div class="friend-avatar" style="background: #2c2c2e;">C</div>
+                            <div class="friend-info">
+                                <div class="friend-name">Charlie Davis</div>
+                            </div>
+                            <button class="btn-add-friend-action">Add</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -138,49 +199,148 @@ export function renderUserView(container) {
             return;
         }
         
-        reqBtn.textContent = "Deploying Drone...";
+        reqBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>DEPLOYING...`;
         reqBtn.classList.remove('animate-pulse');
         reqBtn.style.opacity = '0.7';
 
-        // Mock state update
+        // Mock State Update: Request -> Dispatched
+        const tlReq = container.querySelector('#ts-req');
+        const tlDisp = container.querySelector('#ts-disp');
+        const tlFoll = container.querySelector('#ts-foll');
+        const tlArr = container.querySelector('#ts-arr');
+        
+        // Remove old actives
+        [tlReq, tlDisp, tlFoll, tlArr].forEach(el => { if(el) el.classList.remove('active'); });
+        
+        // Setup progression sequence
+        if(tlDisp) tlDisp.classList.add('active');
+
         setTimeout(() => {
-            reqBtn.textContent = "Drone En Route";
-            reqBtn.classList.remove('btn-primary');
-            reqBtn.classList.add('btn');
+            reqBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>Request Drone Escort`;
+            reqBtn.style.opacity = '1';
             
-            const steps = container.querySelectorAll('.timeline-step');
-            steps[0].classList.add('active');
-            steps[1].classList.add('active');
-
-            const connDot = container.querySelector('#drone-conn-dot');
-            const connText = container.querySelector('#drone-conn-text');
-            connDot.style.background = 'var(--text-main)';
-            connText.textContent = "Drone Sentry-04 Connected";
-            connText.style.color = 'var(--text-main)';
-
-            const statusPanel = container.querySelector('.mission-stats');
-            statusPanel.innerHTML = `
-                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">MISSION STATUS</div>
-                <div style="font-size: 1.2rem; font-weight: bold; color: var(--text-main);">Drone Dispatched</div>
-                <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem;">
-                    <div>
-                        <div class="text-muted">ETA (Drone)</div>
-                        <div class="text-main">2 mins</div>
-                    </div>
-                    <div>
-                        <div class="text-muted">Distance (Drone)</div>
-                        <div>0.4 mi</div>
-                    </div>
-                </div>
-            `;
+            [tlReq, tlDisp, tlFoll, tlArr].forEach(el => { if(el) el.classList.remove('active'); });
+            if(tlFoll) tlFoll.classList.add('active');
+            
+            // For demo purposes, the drone will stay in "FOLLOWING" mode and never reach "ARRIVED"
         }, 1500);
     });
 
-    const panicBtn = container.querySelector('#btn-panic');
-    panicBtn.addEventListener('click', () => {
-        alert("🚨 EMERGENCY ALERT TRIGGERED! 🚨\n\nAdmin Control Center has been notified. Siren activated.");
-        panicBtn.style.transform = 'scale(1.1)';
-        panicBtn.style.boxShadow = '0 0 30px rgba(255, 51, 102, 1)';
+    const sosBtn = container.querySelector('#btn-emergency-sos');
+    const sosOverlay = container.querySelector('#sos-overlay');
+    const sosBackBtn = container.querySelector('#sos-back-btn');
+    const sosCancelBtn = container.querySelector('#btn-cancel-sos');
+    const sosCountdownText = container.querySelector('#sos-countdown-text');
+    const sosChk1 = container.querySelector('#sos-chk-1');
+    const sosChk2 = container.querySelector('#sos-chk-2');
+    const sosChk3 = container.querySelector('#sos-chk-3');
+    
+    let sosTimer = null;
+    
+    const setChecked = (el) => {
+        el.classList.add('checked');
+        el.querySelector('.sos-circle').innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    };
+
+    sosBtn.addEventListener('click', () => {
+        sosOverlay.classList.add('active');
+        sosCountdownText.textContent = 'Activating in 5s';
+        [sosChk1, sosChk2, sosChk3].forEach(chk => {
+            chk.classList.remove('checked');
+            chk.querySelector('.sos-circle').innerHTML = '';
+        });
+        
+        let timeLeft = 5;
+        
+        sosTimer = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                sosCountdownText.textContent = `Activating in ${timeLeft}s`;
+                if (timeLeft === 4) setChecked(sosChk1);
+                if (timeLeft === 2) setChecked(sosChk2);
+                if (timeLeft === 1) setChecked(sosChk3);
+            } else {
+                clearInterval(sosTimer);
+                sosOverlay.classList.remove('active');
+                
+                // Dispatch event for Admin Dashboard to catch
+                window.dispatchEvent(new CustomEvent('aegis-sos-triggered'));
+                
+                setTimeout(() => alert('Emergency Services Notified.'), 100);
+            }
+        }, 1000);
+    });
+
+    const cancelSos = () => {
+        clearInterval(sosTimer);
+        sosOverlay.classList.remove('active');
+    };
+
+    sosBackBtn.addEventListener('click', cancelSos);
+    sosCancelBtn.addEventListener('click', cancelSos);
+    
+    // Add Friends Overlay Logic
+    const friendsBtn = container.querySelector('#btn-add-friends');
+    const friendsOverlay = container.querySelector('#add-friends-overlay');
+    const friendsBackBtn = container.querySelector('#add-friends-back-btn');
+
+    if (friendsBtn && friendsOverlay && friendsBackBtn) {
+        friendsBtn.addEventListener('click', () => {
+            friendsOverlay.classList.add('active');
+        });
+        friendsBackBtn.addEventListener('click', () => {
+            friendsOverlay.classList.remove('active');
+        });
+        
+        // Add button logic
+        const addFriendButtons = friendsOverlay.querySelectorAll('.btn-add-friend-action');
+        addFriendButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!btn.classList.contains('added')) {
+                    btn.classList.add('added');
+                    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                } else {
+                    btn.classList.remove('added');
+                    btn.innerHTML = 'Add';
+                }
+            });
+        });
+    }
+
+    const alertFriendsBtn = container.querySelector('#btn-alert-friends');
+    if (alertFriendsBtn) {
+        alertFriendsBtn.addEventListener('click', () => {
+            alert('Friends have been alerted!');
+        });
+    }
+    
+    // PIP Interactivity Controls
+    const btnThermal = container.querySelector('#btn-thermal');
+    const telloStream = container.querySelector('#tello-stream');
+    let isThermal = false;
+    btnThermal.addEventListener('click', () => {
+        isThermal = !isThermal;
+        if(isThermal) {
+            telloStream.classList.add('thermal-mode');
+            btnThermal.style.color = '#ff3366';
+        } else {
+            telloStream.classList.remove('thermal-mode');
+            btnThermal.style.color = '';
+        }
+    });
+
+    const btnFullscreen = container.querySelector('#btn-fullscreen');
+    const pipContainer = container.querySelector('.pip-container');
+    let isFullscreen = false;
+    btnFullscreen.addEventListener('click', () => {
+        isFullscreen = !isFullscreen;
+        if(isFullscreen) {
+            pipContainer.classList.add('pip-fullscreen');
+            btnFullscreen.style.color = '#ff3366';
+        } else {
+            pipContainer.classList.remove('pip-fullscreen');
+            btnFullscreen.style.color = '';
+        }
     });
 
     // Initialize Mapbox Map & APIs
@@ -193,33 +353,55 @@ export function renderUserView(container) {
             zoom: 15,
             pitch: 45 // Add a slight tilt for a drone camera feel
         });
+        
+        // Fix for Mapbox sizing bug when loaded inside a hidden/flex container
+        setTimeout(() => {
+            userMap.resize();
+        }, 200);
 
-        // Setup 3D Buildings Layer
-        userMap.on('style.load', () => {
-            const layers = userMap.getStyle().layers;
-            let labelLayerId;
-            for (let i = 0; i < layers.length; i++) {
-                if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
-                    labelLayerId = layers[i].id;
-                    break;
+            // Setup 3D Buildings Layer as glowing wireframes
+            userMap.on('style.load', () => {
+                const layers = userMap.getStyle().layers;
+                let labelLayerId;
+                for (let i = 0; i < layers.length; i++) {
+                    if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+                        labelLayerId = layers[i].id;
+                        break;
+                    }
                 }
-            }
-             
-            userMap.addLayer({
-                'id': 'add-3d-buildings',
-                'source': 'composite',
-                'source-layer': 'building',
-                'filter': ['==', 'extrude', 'true'],
-                'type': 'fill-extrusion',
-                'minzoom': 14,
-                'paint': {
-                    'fill-extrusion-color': '#2a3a4a', 
-                    'fill-extrusion-height': ['get', 'height'],
-                    'fill-extrusion-base': ['get', 'min_height'],
-                    'fill-extrusion-opacity': 0.8
-                }
-            }, labelLayerId);
-        });
+                 
+                // Wireframe glowing buildings
+                userMap.addLayer({
+                    'id': 'add-3d-buildings',
+                    'source': 'composite',
+                    'source-layer': 'building',
+                    'filter': ['==', 'extrude', 'true'],
+                    'type': 'fill-extrusion',
+                    'minzoom': 14,
+                    'paint': {
+                        'fill-extrusion-color': '#0d1620', // Very dark blue/black
+                        'fill-extrusion-height': ['get', 'height'],
+                        'fill-extrusion-base': ['get', 'min_height'],
+                        'fill-extrusion-opacity': 0.7
+                    }
+                }, labelLayerId);
+                
+                // Hack to create glowing outlines for 3D buildings by duplicating the layer with lines isn't natively supported for extrusion.
+                // But we can add a flat line layer to simulate ground topology.
+                userMap.addLayer({
+                    'id': 'building-outlines',
+                    'source': 'composite',
+                    'source-layer': 'building',
+                    'filter': ['==', 'extrude', 'true'],
+                    'type': 'line',
+                    'minzoom': 14,
+                    'paint': {
+                        'line-color': '#00f0ff',
+                        'line-width': 1,
+                        'line-opacity': 0.5
+                    }
+                }, labelLayerId);
+            });
 
         // State variables for routing
         let startCoords = [-105.2705, 40.0150]; // Default boulder
@@ -229,14 +411,24 @@ export function renderUserView(container) {
         // Custom 'user' marker
         const userMarkerEl = document.createElement('div');
         userMarkerEl.className = 'custom-marker-user';
+        userMarkerEl.innerHTML = '<div class="pulse-ring"></div><div class="user-center">YOU</div>';
+        
         const userMarker = new mapboxgl.Marker({ element: userMarkerEl })
             .setLngLat(startCoords)
             .addTo(userMap);
             
         const destMarkerEl = document.createElement('div');
-        destMarkerEl.className = 'custom-marker-drone'; // Re-use for dest temporarily
-        destMarkerEl.style.backgroundColor = 'var(--accent-green)';
+        destMarkerEl.className = 'custom-marker-drone'; // Temporarily the destination marker
+        destMarkerEl.innerHTML = '<span style="color:#00f0ff;font-size:1.5rem;">❖</span>';
         const destMarker = new mapboxgl.Marker({ element: destMarkerEl });
+        
+        // Sentry 2 stationary display
+        const sentry2El = document.createElement('div');
+        sentry2El.className = 'sentry-marker';
+        sentry2El.innerHTML = '<div class="sentry-icon">✈</div><div class="sentry-label">SENTRY-02</div>';
+        // We'll place this just north east of the start location
+        const sentry2Coords = [startCoords[0] + 0.003, startCoords[1] + 0.003];
+        new mapboxgl.Marker({ element: sentry2El }).setLngLat(sentry2Coords).addTo(userMap);
 
         // Step 1: Geolocation for Start Input
         const startInput = container.querySelector('#start-input');
@@ -258,68 +450,18 @@ export function renderUserView(container) {
         };
 
         const getUserLocation = async () => {
-            startInput.value = "Requesting permission...";
+            startInput.value = "Acquiring GPS Lock...";
             
-            const fallbackToIP = async () => {
-                try {
-                    startInput.value = "Estimating from Network...";
-                    const res = await fetch('https://ipapi.co/json/');
-                    const data = await res.json();
-                    if(data.latitude && data.longitude) {
-                        startCoords = [data.longitude, data.latitude];
-                        userMarker.setLngLat(startCoords);
-                        userMap.flyTo({ center: startCoords, zoom: 12 });
-                        startInput.value = `${data.city}, ${data.region}`;
-                    } else {
-                        throw new Error("IP location failed");
-                    }
-                } catch (e) {
-                    console.warn("IP Fallback failed", e);
-                    startInput.value = "University Library, North Ent. (Default)";
-                }
-            };
-            
-            const useElectronGPS = async () => {
-                try {
-                    const loc = await window.ipcRenderer.getAppLocation();
-                    if(loc && loc.lat && loc.lng) {
-                         startCoords = [loc.lng, loc.lat];
-                         userMarker.setLngLat(startCoords);
-                         userMap.flyTo({ center: startCoords, zoom: 16 });
-                         reverseGeocode(loc.lng, loc.lat);
-                         return true;
-                    }
-                } catch(e) { console.warn('IPC GPS failed'); }
-                return false;
-            };
-
-            // 1. Try secure IPC (Electron)
-            if (window.ipcRenderer && window.ipcRenderer.getAppLocation) {
-                const success = await useElectronGPS();
-                if(success) return;
-            }
-
-            // 2. Try native browser (Will fail on HTTP Localhost)
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const lng = position.coords.longitude;
-                        const lat = position.coords.latitude;
-                        startCoords = [lng, lat];
-                        userMarker.setLngLat(startCoords);
-                        userMap.flyTo({ center: startCoords, zoom: 16 });
-                        reverseGeocode(lng, lat);
-                    },
-                    (error) => {
-                        console.warn("Geolocation failed", error);
-                        // 3. Fallback to IP address geolocation
-                        fallbackToIP();
-                    },
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-                );
-            } else {
-                fallbackToIP();
-            }
+            // For hackathon/demo purposes, instantly resolve to the requested "Eaton Humanities" building at CU Boulder
+            setTimeout(() => {
+                const lng = -105.271811;
+                const lat = 40.008987;
+                startCoords = [lng, lat];
+                if (userMarker) userMarker.setLngLat(startCoords);
+                if (userMap) userMap.flyTo({ center: startCoords, zoom: 16 });
+                
+                startInput.value = "Eaton Humanities - 1610 Pleasant St, Boulder, CO 80309";
+            }, 600); // Small delay to simulate the "lock" loading text
         };
         
         btnLocate.addEventListener('click', getUserLocation);
@@ -339,22 +481,37 @@ export function renderUserView(container) {
             clearTimeout(currentTimeout);
             currentTimeout = setTimeout(async () => {
                 try {
-                    // Allow broad global search like Google Maps
-                    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxgl.accessToken}&autocomplete=true&limit=5`;
-                    const res = await fetch(url);
+                    // Use OpenStreetMap Nominatim API for Google Maps level precision on college campuses and buildings
+                    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + " Boulder")}&format=json&viewbox=-105.32,40.06,-105.20,39.96&bounded=1&limit=6`;
+                    const res = await fetch(url, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'HackCU-Drone-App'
+                        }
+                    });
                     const data = await res.json();
                     
                     autocompleteResults.innerHTML = '';
-                    if(data.features && data.features.length > 0) {
-                        data.features.forEach(feat => {
+                    const allResults = [];
+
+                    if(Array.isArray(data) && data.length > 0) {
+                        data.forEach(feat => {
+                            let subtext = feat.display_name.replace(feat.name + ', ', '');
+                            
+                            allResults.push({
+                                text: feat.name,
+                                subtext: subtext,
+                                place_name: feat.name,
+                                center: [parseFloat(feat.lon), parseFloat(feat.lat)]
+                            });
+                        });
+                    }
+
+                    if(allResults.length > 0) {
+                        allResults.forEach(feat => {
                             const item = document.createElement('div');
                             item.className = 'autocomplete-item';
-                            // Safe parsing of address
-                            let subtext = feat.place_name;
-                            if(feat.place_name.startsWith(feat.text)) {
-                                subtext = feat.place_name.substring(feat.text.length).replace(/^,\s*/, '');
-                            }
-                            item.innerHTML = `<strong>${feat.text}</strong><span style="font-size: 0.75rem; color: var(--text-muted);">${subtext}</span>`;
+                            item.innerHTML = `<strong>${feat.text}</strong><span style="font-size: 0.72rem; color: var(--text-muted); padding-left: 8px;">${feat.subtext}</span>`;
                             
                             item.addEventListener('click', () => {
                                 destInput.value = feat.place_name;
@@ -446,25 +603,12 @@ export function renderUserView(container) {
                         maxZoom: 16
                     });
                     
-                    // Update stats panel
-                    const distanceMiles = (route.distance / 1609.34).toFixed(2);
                     const durationMins = Math.ceil(route.duration / 60);
+                    const etaTop = container.querySelector('#stat-eta-top');
+                    const etaBot = container.querySelector('#stat-eta-bot');
+                    if(etaTop) etaTop.textContent = `${durationMins} min`;
+                    if(etaBot) etaBot.textContent = `${durationMins} min`;
                     
-                    const statusPanel = container.querySelector('.mission-stats');
-                    statusPanel.innerHTML = `
-                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">MISSION STATUS</div>
-                        <div style="font-size: 1.2rem; font-weight: bold; color: var(--text-main);">Drone Dispatched</div>
-                        <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem;">
-                            <div>
-                                <div class="text-muted">ETA (Drone)</div>
-                                <div class="text-main" style="color:var(--accent-cyan);">${durationMins} mins</div>
-                            </div>
-                            <div>
-                                <div class="text-muted">Distance</div>
-                                <div>${distanceMiles} mi</div>
-                            </div>
-                        </div>
-                    `;
                 } else {
                     console.warn("No walking routes found.");
                 }

@@ -4,11 +4,17 @@ export function renderLoginView(container, onLoginSuccess) {
     container.innerHTML = `
         <div class="login-container">
             <div class="glass-panel login-panel">
-                <div class="login-header">
+                <div class="login-header" style="text-align: center;">
                     <div class="brand">
                         <span class="text-main" style="font-family: 'Outfit', sans-serif; letter-spacing: 2px;">RALPHLY</span>
                     </div>
+                    <div style="font-size: 0.85rem; color: #e0e0e0; margin-top: 5px; font-weight: 500; letter-spacing: 0.5px;">Your friendly campus drone escort</div>
                 </div>
+
+                <div class="drone-animation-track">
+                    <img class="ralphie-drone" src="/assets/ralphie-drone.png" alt="Ralphie Drone" />
+                </div>
+
 
                 <div id="login-error" class="error-message hidden">
                     Invalid credentials. Please try again.
@@ -26,6 +32,10 @@ export function renderLoginView(container, onLoginSuccess) {
                     
                     <button type="submit" class="btn btn-primary w-full" style="margin-top: 8px;">Login</button>
                 </form>
+                
+                <div style="text-align: center; margin-top: 5px; margin-bottom: 5px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); letter-spacing: 0.5px;">
+                    Serving CU Boulder Students
+                </div>
             </div>
         </div>
     `;

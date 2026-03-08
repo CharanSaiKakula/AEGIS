@@ -16,13 +16,24 @@
   <body>
     <div id="app-container">
       <!-- Top Navigation -->
-      <nav class="top-nav">
+      <nav class="top-nav" style="justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,240,255,0.1); background: rgba(10, 15, 20, 0.85); backdrop-filter: blur(10px); position: relative; z-index: 9999;">
+        <!-- Top Left: Logo -->
         <div class="brand">
-          <span class="text-main" style="font-family: 'Outfit', sans-serif; letter-spacing: 2px;">RALPHLY</span>
+          <span style="font-family: 'Outfit', sans-serif; letter-spacing: 3px; font-size: 1.5rem; color: #ffffff; text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); font-weight: bold; text-transform: uppercase;">RALPHLY</span>
         </div>
-        <div class="nav-controls flex-row" id="user-profile-controls" style="display: none;">
-          <span style="font-size: 0.8rem; color: var(--text-muted);" id="logged-in-user"></span>
-          <button id="btn-logout" class="btn btn-danger">Logout</button>
+        
+        <!-- Empty Center Spacer -->
+        <div style="flex: 1;"></div>
+
+        <!-- Top Right: User Controls -->
+        <div class="nav-controls flex-row" id="user-profile-controls" style="display: none; align-items: center;">
+          <div class="profile-dropdown-container">
+            <img src="/assets/nav-icon.png" alt="Profile Icon" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: none; display: block;" />
+            <div class="profile-dropdown-menu">
+              <div class="profile-dropdown-item user-name" id="logged-in-user">User: Charan</div>
+              <button class="profile-dropdown-item logout-btn" id="btn-logout">Logout</button>
+            </div>
+          </div>
         </div>
       </nav>
 

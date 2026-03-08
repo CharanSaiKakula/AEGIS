@@ -28,6 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
             loggedInUserSpan.textContent = 'User: Charan';
             userView.classList.remove('hidden');
         }
+
+        // Force a window resize event to tell Mapbox to recalculate its bounds
+        // now that its parent container is no longer display: none
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
     }
 
     function handleLogout() {

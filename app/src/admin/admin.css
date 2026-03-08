@@ -6,6 +6,23 @@
   grid-template-rows: auto 1fr;
   gap: var(--spacing-lg);
   height: 100%;
+  transition: all 0.3s ease;
+}
+
+.admin-dashboard.drone-mode {
+  grid-template-columns: 300px 1fr;
+}
+
+.admin-dashboard.drone-mode .admin-sidebar-right {
+  display: none;
+}
+
+.admin-dashboard.drone-mode #overview-stats-panel {
+  display: none !important;
+}
+
+.admin-dashboard.overview-mode #drone-video-panel {
+  display: none !important;
 }
 
 /* Sidebars */
@@ -132,4 +149,31 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+@keyframes droneHover {
+  0% { transform: scale(1) translate(0, 0); filter: grayscale(50%) contrast(1.2) sepia(0%); }
+  50% { transform: scale(1.05) translate(2%, 1%); filter: grayscale(50%) contrast(1.3) sepia(10%); }
+  100% { transform: scale(1.1) translate(-1%, -2%); filter: grayscale(50%) contrast(1.2) sepia(0%); }
+}
+
+.ken-burns {
+  animation: droneHover 15s infinite alternate ease-in-out;
+}
+
+/* Mapbox Popup Theme Override */
+.mapboxgl-popup-content {
+  background: rgba(0, 30, 40, 0.9) !important;
+  border: 1px solid var(--accent-cyan) !important;
+  border-radius: 8px !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3) !important;
+  font-family: inherit !important;
+  padding: 10px 15px !important;
+  backdrop-filter: blur(10px);
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: var(--accent-cyan) !important;
+  border-bottom-color: var(--accent-cyan) !important;
 }
