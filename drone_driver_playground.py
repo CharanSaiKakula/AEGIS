@@ -9,16 +9,16 @@ tello = Tello()
 print("Connecting to drone...")
 tello.connect()
 print("Battery:", tello.get_battery())
-
+time.sleep(5)
 print("Taking off...")
 tello.takeoff()
-time.sleep(2)
+
 
 # Move to reference hover point
 # NOTE: takeoff already rises somewhat, so 50 cm is safer indoors than 100
 print("Moving to reference hover point...")
-tello.move_up(50)
-time.sleep(2)
+tello.move_up(100)
+
 
 print("Reference hover point established.")
 
@@ -124,6 +124,9 @@ def execute_geofenced_move(direction, requested_cm):
     if allowed_cm < requested_cm:
         print(f"Geofence override: clipping move to {allowed_cm} cm")
 
+
+    # turn this into a switch case
+
     if direction == "forward":
         tello.move_forward(allowed_cm)
     elif direction == "back":
@@ -185,6 +188,11 @@ while True:
         print("Quitting without landing command is unsafe. Landing instead...")
         tello.land()
         print("Flight complete")
+        break
+    if user_input == "takeoff":
+        print("Fuck you Neil, taking off now")
+        tello.takeoff()
+        print("Fuck you Vishnu, I'm higher than you")
         break
 
     parts = user_input.split()
