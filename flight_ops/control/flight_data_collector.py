@@ -54,6 +54,7 @@ class FlightDataCollector:
         self.speed_z: float = 0.0
 
         self.height_cm: float = 0.0
+        self.tof_cm: float = 0.0  # TOF distance to floor (cm); more reliable indoors
         self.mission_pad_id: int = -1
 
         self.temp: float = 0.0
@@ -78,6 +79,7 @@ class FlightDataCollector:
         self.bat = self.battery
         self.latency_ms = self._latency_ms
         self.height_cm = float(_get("h", 0))
+        self.tof_cm = float(_get("tof", 0))
         self.altitude_m = self.height_cm / 100.0
         self.mission_time_s = time.monotonic() - self._mission_start
 
@@ -105,6 +107,7 @@ class FlightDataCollector:
             altitude_m=self.altitude_m,
             mission_time_s=self.mission_time_s,
             link_ok=self.link_ok,
+            tof_cm=self.tof_cm,
         )
 
 

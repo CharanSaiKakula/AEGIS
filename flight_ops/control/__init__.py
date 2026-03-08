@@ -8,7 +8,6 @@ from .controller import (
     search_command,
     center_command,
 )
-from .distance_estimator import DistanceEstimator, estimate_distance_m
 from .flight_data_collector import FlightDataCollector
 from .tello_executor import takeoff, land, move_up, apply_command
 
@@ -23,7 +22,5 @@ __all__ = [
     "land",
     "move_up",
     "apply_command",
-    "DistanceEstimator",
-    "estimate_distance_m",
     "FlightDataCollector",
 ]

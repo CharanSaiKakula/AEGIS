@@ -13,6 +13,13 @@ def should_force_land(telemetry: TelemetrySnapshot) -> bool:
     return not safe
 
 
+def _altitude_for_safety(t: TelemetrySnapshot) -> float:
+    """Altitude in meters for safety check. Uses TOF indoors when configured."""
+    if config.USE_TOF_FOR_ALTITUDE and t.tof_cm >= 5:
+        return t.tof_cm / 100.0
+    return t.altitude_m
+
+
 def check_safety(telemetry: TelemetrySnapshot) -> tuple[bool, str | None]:
     """
     Check whether it is safe to continue. Safety sits above the MDP.
@@ -33,7 +40,8 @@ def check_safety(telemetry: TelemetrySnapshot) -> tuple[bool, str | None]:
     if t.latency_ms >= config.LATENCY_CRITICAL_MS:
         return False, "latency_critical"
 
-    if t.altitude_m >= config.ALTITUDE_HARD_MAX:
+    alt_m = _altitude_for_safety(t)
+    if alt_m >= config.ALTITUDE_HARD_MAX:
         return False, "altitude_over_max"
 
     if t.mission_time_s >= config.MISSION_TIME_MAX_S:

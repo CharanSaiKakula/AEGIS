@@ -1,5 +1,5 @@
 """
-Entry point: aegis fly runs autonomy via find_object (time-based + DistanceEstimator) or ruleset (MDP policy).
+Entry point: aegis fly runs autonomy via find_object or ruleset (MDP policy).
 """
 
 import os
@@ -15,7 +15,6 @@ from djitellopy import Tello
 
 from flight_ops.config.types import VisionMeasurement, TelemetrySnapshot
 from flight_ops.config import config_module
-from flight_ops.control import DistanceEstimator
 from flight_ops.decision.find_object import find_object
 
 from cv.human_pose_tracker_3d import PoseTracker3D
@@ -33,38 +32,52 @@ def run_with_tello_ruleset(t: Tello, tracker: PoseTracker3D) -> None:
         land,
         apply_command,
         FlightDataCollector,
-        DistanceEstimator,
     )
     from flight_ops.perception import read_measurement_from_pose
 
     # Takeoff is done in run_with_tello() before tracker creation (see comment there).
     sensor = FlightDataCollector(t)
-    distance_estimator = DistanceEstimator()
     manager = MissionManager()
 
     while True:
         sensor.collect()
         frame, pose_data = tracker.get_pose_data()
-        measurement = read_measurement_from_pose(pose_data, distance_estimator)
+        measurement = read_measurement_from_pose(pose_data)
         telemetry = sensor.to_telemetry_snapshot()
 
         state, cmd, debug = manager.step(measurement, telemetry)
 
         if manager.request_land():
+            reason = debug.get("safety_reason", "")
+            if reason:
+                print(f"\nlanded (safety: {reason})")
+            else:
+                print("landed")
             land(t)
-            print("landed")
             break
 
         apply_command(t, cmd)
 
-        conf = measurement.confidence
-        if conf > 0:
-            print(
-                f"  bat={sensor.bat:.0f}% conf={conf:.2f} dist={measurement.distance:.2f}m "
-                f"{state.value}",
-                end="\r",
-            )
+        print(
+            f"  bat={sensor.bat:.0f}% conf={measurement.confidence:.2f} dist={measurement.distance:.2f}m "
+            f"{state.value}",
+            end="\r",
+        )
         if frame is not None:
+            frame = tracker.draw_debug(frame.copy(), pose_data)
+            # Mission HUD (same style as CV draw_debug: black bg, white text)
+            hud_lines = [
+                f"bat={sensor.bat:.0f}% alt={sensor.altitude_m:.2f}m",
+                f"state={state.value} conf={measurement.confidence:.2f} dist={measurement.distance:.2f}m",
+                f"x_err={measurement.x_error:.2f} y_err={measurement.y_error:.2f}",
+                f"cmd lr={cmd.lr} fb={cmd.fb} ud={cmd.ud} yaw={cmd.yaw}",
+                f"yaw={sensor.yaw:.0f} pitch={sensor.pitch:.0f} roll={sensor.roll:.0f}",
+            ]
+            for i, text in enumerate(hud_lines):
+                y = frame.shape[0] - 120 + i * 22
+                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                cv2.rectangle(frame, (5, y - 16), (5 + tw, y + th + 4), (0, 0, 0), -1)
+                cv2.putText(frame, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             cv2.imshow("Ruleset", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             land(t)
@@ -85,8 +98,7 @@ def run_with_tello() -> None:
 
         use_ruleset = True  # False → find_object (does its own takeoff)
         if use_ruleset:
-            # Takeoff before PoseTracker3D: MediaPipe/TensorFlow init in tracker
-            # __init__ can block the Tello command channel and cause takeoff timeout.
+            # Takeoff before PoseTracker3D: MediaPipe init can block Tello command channel.
             from flight_ops.control import takeoff, move_up
             takeoff(t)
             time.sleep(1)
@@ -95,11 +107,10 @@ def run_with_tello() -> None:
                 move_up(t, climb_cm)
 
         tracker = PoseTracker3D(camera_source=t)
-        distance_estimator = DistanceEstimator()
         if use_ruleset:
             run_with_tello_ruleset(t, tracker)
         else:
-            find_object(t, tracker, distance_estimator=distance_estimator)
+            find_object(t, tracker)
 
     except KeyboardInterrupt:
         print("\nInterrupted.")

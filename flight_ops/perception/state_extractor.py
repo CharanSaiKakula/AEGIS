@@ -119,4 +119,5 @@ def extract_discrete_state(
         latency_bucket=bucket_latency(telemetry.latency_ms),
         battery_bucket=bucket_battery(telemetry.battery),
         lost_duration_bucket=bucket_lost_duration(lost_duration_s),
+        lost_duration_s=lost_duration_s,
     )

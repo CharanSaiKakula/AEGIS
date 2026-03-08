@@ -46,9 +46,10 @@ class TelemetrySnapshot:
 
     battery: float       # 0..100
     latency_ms: float   # command round-trip latency
-    altitude_m: float   # altitude in meters
+    altitude_m: float   # altitude in meters (barometric)
     mission_time_s: float  # elapsed mission time
     link_ok: bool = True  # link healthy
+    tof_cm: float = 0.0  # TOF distance to floor (cm); more reliable indoors than baro
 
 
 @dataclass
@@ -70,3 +71,4 @@ class DiscreteState:
     latency_bucket: str   # e.g. "nominal", "degraded", "critical"
     battery_bucket: str   # e.g. "normal", "low", "critical"
     lost_duration_bucket: str  # e.g. "short", "medium", "long"
+    lost_duration_s: float  # raw seconds since target last visible (for policy thresholds)

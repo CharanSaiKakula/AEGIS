@@ -22,7 +22,6 @@ from ..control import (
     follow_control,
     set_abort,
     FlightDataCollector,
-    DistanceEstimator,
 )
 from ..perception import read_measurement_from_pose
 
@@ -49,11 +48,11 @@ def _wrap_delta(delta: float) -> float:
     return delta
 
 
-def find_object(tello, pose_tracker, frame_read=None, distance_estimator=None) -> None:
+def find_object(tello, pose_tracker, frame_read=None) -> None:
     """
     Takeoff, hover, search until person found or full 360°. If found: center (yaw-only),
     then follow (center + maintain distance), then land. If not found: land immediately.
-    Uses DistanceEstimator for metric distance when provided.
+    Uses pose_data.depth from CV for distance.
     """
     takeoff(tello)
     time.sleep(1)  # Wait for IMU to stabilize
@@ -62,8 +61,6 @@ def find_object(tello, pose_tracker, frame_read=None, distance_estimator=None) -
         move_up(tello, climb_cm)
 
     sensor = FlightDataCollector(tello)
-    if distance_estimator is None:
-        distance_estimator = DistanceEstimator()
     state = State.HOVER
     hover_start = time.monotonic()
     search_yaw_prev: float | None = None
@@ -74,7 +71,7 @@ def find_object(tello, pose_tracker, frame_read=None, distance_estimator=None) -
     while True:
         sensor.collect()
         frame, pose_data = pose_tracker.get_pose_data()
-        measurement = read_measurement_from_pose(pose_data, distance_estimator)
+        measurement = read_measurement_from_pose(pose_data)
         confidence = measurement.confidence
 
         match state:

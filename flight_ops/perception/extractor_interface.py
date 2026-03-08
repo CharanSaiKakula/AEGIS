@@ -5,7 +5,23 @@ The real extractor runs on the ground station and provides filtered measurements
 This module exposes the interface and a mock provider for development and testing.
 """
 
+import numpy as np
+
 from ..config.types import VisionMeasurement
+from ..config import config_module as config
+
+
+def _depth_to_distance_m(depth: float) -> float:
+    """
+    Convert raw depth (CV output) to meters.
+
+    For SinglePersonTracker with auto_calibrate=False: depth = 1000/body_scale_px.
+    Perspective: apparent size ∝ 1/distance, so distance ∝ depth. Thus distance_m = K * depth.
+    Tune config.DEPTH_TO_METERS_K via calibration (e.g. at 1m if depth≈10 then K≈0.1).
+    """
+    if not depth or depth <= 0:
+        return 0.0
+    return float(config.DEPTH_TO_METERS_K * depth)
 
 
 def read_measurement_from_tracker(tracker) -> VisionMeasurement:
@@ -25,20 +41,28 @@ def read_measurement_from_tracker(tracker) -> VisionMeasurement:
     )
 
 
-def read_measurement_from_pose(pose_data, distance_estimator) -> VisionMeasurement:
+def read_measurement_from_pose(pose_data) -> VisionMeasurement:
     """
-    Convert PoseData (from cv.human_pose_tracker_3d) and distance_estimator
-    into a VisionMeasurement for the follow/find_object pipeline.
+    Convert PoseData or TrackData (from cv.human_pose_tracker_3d) into a VisionMeasurement.
+    Uses pose_data.depth (raw CV output) for distance; converts via _depth_to_distance_m.
+    Supports both normalized_x/normalized_y (PoseData) and norm_x/norm_y (TrackData).
     """
     if not getattr(pose_data, "detected", False):
         return VisionMeasurement(x_error=0.0, y_error=0.0, distance=0.0, confidence=0.0)
-    distance_m = distance_estimator.estimate(pose_data)
+    depth = getattr(pose_data, "depth", 0.0) or 0.0
+    distance_m = _depth_to_distance_m(depth)
     conf = getattr(pose_data, "confidence", 1.0)
     if isinstance(conf, bool):
         conf = 1.0 if conf else 0.0
+    x_err = getattr(pose_data, "normalized_x", None)
+    if x_err is None:
+        x_err = getattr(pose_data, "norm_x", 0.0)
+    y_err = getattr(pose_data, "normalized_y", None)
+    if y_err is None:
+        y_err = getattr(pose_data, "norm_y", 0.0)
     return VisionMeasurement(
-        x_error=getattr(pose_data, "normalized_x", 0.0),
-        y_error=getattr(pose_data, "normalized_y", 0.0),
+        x_error=float(x_err),
+        y_error=float(y_err),
         distance=distance_m,
         confidence=float(conf),
     )

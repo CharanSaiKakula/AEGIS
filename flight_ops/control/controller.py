@@ -64,14 +64,20 @@ class TelloController:
         """Reset Smith predictor state (e.g. after target loss)."""
         self._initialized = False
 
+    def _apply_camera_sign(self, x: float, y: float, d: float) -> tuple[float, float, float]:
+        """Apply camera sign flips for mirrored Tello camera."""
+        x = -x if getattr(config, "CAMERA_NEGATE_X", False) else x
+        y = -y if getattr(config, "CAMERA_NEGATE_Y", False) else y
+        return x, y, d
+
     def _smith_predict(self, measurement: VisionMeasurement) -> tuple[float, float, float]:
         """
         Shared Smith predictor: returns (x_pred, y_pred, d_pred) for delay compensation.
         Used by both follow() and center().
         """
-        x = measurement.x_error
-        y = measurement.y_error
-        d = measurement.distance
+        x, y, d = self._apply_camera_sign(
+            measurement.x_error, measurement.y_error, measurement.distance
+        )
 
         now = time.monotonic()
         dt = 0.1
@@ -107,8 +113,9 @@ class TelloController:
     def center(self, measurement: VisionMeasurement) -> ControlCommand:
         """Yaw-only Smith-predicted control: keep the object centered in the frame."""
         x_pred, _, _ = self._smith_predict(measurement)
+        # x_pred already has CAMERA_NEGATE_X applied; positive = target left, yaw left
         yaw = _clamp(self.yaw_gain * x_pred, self.cmd_min, self.cmd_max)
-        return ControlCommand(lr=0, fb=0, ud=0, yaw=-yaw)
+        return ControlCommand(lr=0, fb=0, ud=0, yaw=yaw)
 
     def follow(
         self,
@@ -129,7 +136,10 @@ class TelloController:
 
         yaw = _clamp(self.yaw_gain * x_pred, self.cmd_min, self.cmd_max)
         ud = _clamp(-self.vertical_gain * y_pred, self.cmd_min, self.cmd_max)
-        fb = _clamp(self.forward_gain * (d_pred - d_ref), self.cmd_min, self.cmd_max)
+        fb_raw = self.forward_gain * (d_pred - d_ref)
+        if getattr(config, "CAMERA_NEGATE_FB", False):
+            fb_raw = -fb_raw
+        fb = _clamp(fb_raw, self.cmd_min, self.cmd_max)
 
         return ControlCommand(lr=0, fb=fb, ud=ud, yaw=yaw)
 

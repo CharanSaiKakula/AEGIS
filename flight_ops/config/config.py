@@ -5,22 +5,27 @@ All values are conservative initial placeholders; tune for your environment.
 """
 
 # --- Follow / vision ---
-DESIRED_DISTANCE_M = 1.5  # target distance to person (meters)
+DESIRED_DISTANCE_M = 3.0  # target distance to person (meters)
 CONFIDENCE_VISIBLE_THRESHOLD = 0.7   # above this we consider target "visible"
+
+# Raw depth (1000/body_scale_px when uncalibrated) -> meters. distance_m = DEPTH_TO_METERS_K * depth.
+# Tune via calibration: at 3m nominal, depth≈30 → K≈0.1.
+DEPTH_TO_METERS_K = 1.0
 
 # --- AOO (radial) bucketing: r = sqrt(x_error^2 + y_error^2) ---
 AOO_RADIUS_SMALL = 0.1   # r <= this -> "centered"
 AOO_RADIUS_LARGE = 0.5   # r <= this -> "moderate"; else "large"
 
-# --- Distance buckets (meters) ---
-TARGET_FOLLOW_DISTANCE = 1.5  # meters
-DISTANCE_NEAR_MAX = 1.0      # <= this -> "near"
-DISTANCE_FAR_MIN = 3.0       # >= this -> "far"
+# --- Distance buckets (meters), nominal ~3m ---
+TARGET_FOLLOW_DISTANCE = 3.0  # meters
+DISTANCE_NEAR_MAX = 2.0      # <= this -> "near" (closer than nominal)
+DISTANCE_FAR_MIN = 5.0       # >= this -> "far" (beyond nominal)
 
 # --- Altitude buckets (meters) ---
-ALTITUDE_LOW_MAX = 0.5       # < this -> "low"
+ALTITUDE_LOW_MAX = 1.0       # < this -> "low"
 ALTITUDE_HIGH_MIN = 1.5      # >= this -> "high"
-ALTITUDE_HARD_MAX = 2.0      # safety: land if exceeded
+ALTITUDE_HARD_MAX = 3.5      # safety: land if exceeded (2m hover needs headroom)
+USE_TOF_FOR_ALTITUDE = True  # indoor: use TOF (distance to floor) instead of barometer for safety
 
 # --- Lost duration buckets (seconds since target last visible) ---
 LOST_DURATION_SHORT_MAX = 5.0   # <= this -> "short"
@@ -43,8 +48,12 @@ CMD_MIN = -100
 
 # --- Follow controller gains  ---
 YAW_GAIN = 50
-VERTICAL_GAIN = 15
+VERTICAL_GAIN = 10
 FORWARD_GAIN = 10
+# --- Camera / control sign (Tello camera mirrored; negate axes as needed) ---
+CAMERA_NEGATE_X = True   # negate x_error for yaw (target right in image → yaw left)
+CAMERA_NEGATE_Y = False  # negate y_error for ud (set True if vertical reversed)
+CAMERA_NEGATE_FB = False # negate forward/back (set True if drone backs when should advance)
 
 # --- Smith predictor (delay compensation) ---
 SMITH_TAU_S = 0.20  # prediction horizon (s)
