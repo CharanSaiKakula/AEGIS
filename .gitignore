@@ -90,3 +90,6 @@ dmypy.json
 
 # DJITelloPy
 DJITelloPy/
+
+# Logs
+/tmp/*
