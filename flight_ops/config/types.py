@@ -14,7 +14,9 @@ class MissionState(Enum):
     TAKEOFF = "takeoff"
     FOLLOW = "follow"
     SEARCH = "search"
+    CENTER = "center"
     HOVER = "hover"
+    REACQUIRE = "reacquire"
     LAND = "land"
 
 
@@ -51,13 +53,20 @@ class TelemetrySnapshot:
 
 @dataclass
 class DiscreteState:
-    """MDP observation: discretized features for the policy."""
+    """MDP observation: discretized features for the policy.
+
+    S = (target_visible, aoo_bucket, distance_bucket, confidence_bucket,
+         altitude_bucket, latency_bucket, battery_bucket, lost_duration_bucket)
+    aoo_bucket: radial distance from center sqrt(x^2 + y^2).
+    """
 
     target_visible: bool
-    x_bucket: str       # e.g. "centered", "moderate", "large"
-    y_bucket: str
+    aoo_bucket: str   # radial: "centered", "moderate", "large" from sqrt(x^2+y^2)
     distance_bucket: str  # e.g. "near", "good", "far"
-    confidence_bucket: str  # e.g. "low", "medium", "high"
+    motion_bucket: str  # "still" or "moving" from image-space deltas
+    at_reasonable_distance: bool  # within tolerance of OPT_DIST_FROM_TARGET
+    confidence_bucket: str  # e.g. "lost", "medium", "good"
     altitude_bucket: str   # e.g. "low", "safe", "high"
     latency_bucket: str   # e.g. "nominal", "degraded", "critical"
     battery_bucket: str   # e.g. "normal", "low", "critical"
+    lost_duration_bucket: str  # e.g. "short", "medium", "long"

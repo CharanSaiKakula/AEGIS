@@ -3,12 +3,12 @@
 from .extractor_interface import (
     get_vision_measurement,
     read_measurement_from_tracker,
+    read_measurement_from_pose,
     MockExtractor,
 )
 from .state_extractor import (
     extract_discrete_state,
-    bucket_x_error,
-    bucket_y_error,
+    bucket_aoo,
     bucket_distance,
     bucket_confidence,
     bucket_altitude,
@@ -20,10 +20,10 @@ from .state_extractor import (
 __all__ = [
     "get_vision_measurement",
     "read_measurement_from_tracker",
+    "read_measurement_from_pose",
     "MockExtractor",
     "extract_discrete_state",
-    "bucket_x_error",
-    "bucket_y_error",
+    "bucket_aoo",
     "bucket_distance",
     "bucket_confidence",
     "bucket_altitude",

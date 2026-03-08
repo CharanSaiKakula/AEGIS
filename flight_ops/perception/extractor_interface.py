@@ -25,12 +25,31 @@ def read_measurement_from_tracker(tracker) -> VisionMeasurement:
     )
 
 
+def read_measurement_from_pose(pose_data, distance_estimator) -> VisionMeasurement:
+    """
+    Convert PoseData (from cv.human_pose_tracker_3d) and distance_estimator
+    into a VisionMeasurement for the follow/find_object pipeline.
+    """
+    if not getattr(pose_data, "detected", False):
+        return VisionMeasurement(x_error=0.0, y_error=0.0, distance=0.0, confidence=0.0)
+    distance_m = distance_estimator.estimate(pose_data)
+    conf = getattr(pose_data, "confidence", 1.0)
+    if isinstance(conf, bool):
+        conf = 1.0 if conf else 0.0
+    return VisionMeasurement(
+        x_error=getattr(pose_data, "normalized_x", 0.0),
+        y_error=getattr(pose_data, "normalized_y", 0.0),
+        distance=distance_m,
+        confidence=float(conf),
+    )
+
+
 def get_vision_measurement() -> VisionMeasurement:
     """
     Return the current vision measurement from the CV pipeline.
 
     This is the integration point: replace the body with a call to your real
-    extractor (e.g. a ROS topic, shared memory, or callback from your CV process).
+    extractor (e.g. a ROS topic, shared memory, or callback from the CV process).
     """
     return _mock_vision_provider()
 

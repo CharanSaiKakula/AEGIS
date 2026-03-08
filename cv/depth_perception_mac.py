@@ -13,41 +13,22 @@ if _USE_LEGACY:
     _Hands = mp.solutions.hands.Hands
 else:
     # MediaPipe Tasks API: need hand_landmarker.task model
+    # Run: ./install_dev.sh --mac  to pre-download to .mediapipe/
     from mediapipe.tasks.python.vision.core import image as _mp_image
     from mediapipe.tasks.python.vision import hand_landmarker as _hand_landmarker_module
 
     _HandLandmarker = _hand_landmarker_module.HandLandmarker
 
-    _HAND_MODEL_URL = (
-        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
-        "hand_landmarker/float16/latest/hand_landmarker.task"
-    )
-
     def _hand_model_path() -> str:
         path = os.environ.get("MEDIAPIPE_HAND_MODEL")
         if path and os.path.isfile(path):
             return path
-        # Prefer project-local cache so it works without ~/.cache write permission
         _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for cache_dir in (
-            os.path.join(_project_root, ".mediapipe"),
-            os.path.join(
-                os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-                "mediapipe",
-            ),
-        ):
-            try:
-                os.makedirs(cache_dir, exist_ok=True)
-                path = os.path.join(cache_dir, "hand_landmarker.task")
-                if not os.path.isfile(path):
-                    import urllib.request
-                    urllib.request.urlretrieve(_HAND_MODEL_URL, path)
-                return path
-            except (OSError, PermissionError):
-                continue
+        path = os.path.join(_project_root, ".mediapipe", "hand_landmarker.task")
+        if os.path.isfile(path):
+            return path
         raise FileNotFoundError(
-            "Could not create cache dir for hand_landmarker.task. "
-            "Set MEDIAPIPE_HAND_MODEL to a hand_landmarker.task path."
+            "hand_landmarker.task not found. Run: ./install_dev.sh --mac"
         )
 
 

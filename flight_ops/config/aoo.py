@@ -1,12 +1,13 @@
 """
 Area of Operation (AOO) / geofence for flight_ops.
 
-Tracks software position (x, y, z in cm) relative to reference hover point (0,0,0)
-and clips movement commands to stay within bounds from config.py.
-Land/autoland is handled by MDP, not AOO.
+Uses radial metric in xy: radius = sqrt(x^2 + y^2). z has separate bounds.
+Reference hover point is (0,0,0). Land/autoland is handled by MDP, not AOO.
 """
 
 from typing import Literal
+
+import numpy as np
 
 from . import config as config_module
 
@@ -16,16 +17,13 @@ _DIRECTIONS: tuple[_Direction, ...] = ("forward", "back", "right", "left", "up",
 
 class AOO:
     """
-    Area of Operation: geofence bounds and position tracking.
+    Area of Operation: radial geofence in xy, bounds in z.
 
-    Reference hover point is (0,0,0). x=left/right, y=forward/back, z=up/down.
+    radius = sqrt(x^2 + y^2) <= AOO_RADIUS_MAX_CM. z in [z_min, z_max].
     """
 
     def __init__(self):
-        self.x_min = config_module.AOO_X_MIN_CM
-        self.x_max = config_module.AOO_X_MAX_CM
-        self.y_min = config_module.AOO_Y_MIN_CM
-        self.y_max = config_module.AOO_Y_MAX_CM
+        self.radius_max_cm = config_module.AOO_RADIUS_MAX_CM
         self.z_min = config_module.AOO_Z_MIN_CM
         self.z_max = config_module.AOO_Z_MAX_CM
         self.move_min_cm = config_module.AOO_MOVE_MIN_CM
@@ -33,6 +31,30 @@ class AOO:
         self.current_x = 0
         self.current_y = 0
         self.current_z = 0
+
+    def _radial_limit_for_axis(self, axis: Literal["x", "y"], sign: int) -> int:
+        """Max allowed movement along axis before exceeding radial limit. sign: +1 or -1."""
+        x, y = self.current_x, self.current_y
+        r_sq_max = self.radius_max_cm * self.radius_max_cm
+
+        if axis == "x":
+            # Circle: x^2 + y^2 = R^2. Right edge x = +sqrt(R^2 - y^2), left x = -sqrt(R^2 - y^2)
+            if y * y > r_sq_max:
+                return 0
+            x_edge = float(np.sqrt(r_sq_max - y * y))
+            if sign > 0:  # right: remaining = x_edge - x
+                remaining = x_edge - x
+            else:  # left: remaining = x - (-x_edge)
+                remaining = x + x_edge
+        else:  # y
+            if x * x > r_sq_max:
+                return 0
+            y_edge = float(np.sqrt(r_sq_max - x * x))
+            if sign > 0:  # forward: remaining = y_edge - y
+                remaining = y_edge - y
+            else:  # back: remaining = y - (-y_edge)
+                remaining = y + y_edge
+        return max(0, int(remaining))
 
     def get_allowed_distance(self, direction: _Direction, requested_cm: int) -> int:
         """
@@ -43,13 +65,13 @@ class AOO:
             return 0
 
         if direction == "forward":
-            remaining = self.y_max - self.current_y
+            remaining = self._radial_limit_for_axis("y", 1)
         elif direction == "back":
-            remaining = self.current_y - self.y_min
+            remaining = self._radial_limit_for_axis("y", -1)
         elif direction == "right":
-            remaining = self.x_max - self.current_x
+            remaining = self._radial_limit_for_axis("x", 1)
         elif direction == "left":
-            remaining = self.current_x - self.x_min
+            remaining = self._radial_limit_for_axis("x", -1)
         elif direction == "up":
             remaining = self.z_max - self.current_z
         elif direction == "down":

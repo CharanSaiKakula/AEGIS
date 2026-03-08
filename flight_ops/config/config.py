@@ -6,23 +6,25 @@ All values are conservative initial placeholders; tune for your environment.
 
 # --- Follow / vision ---
 DESIRED_DISTANCE_M = 1.5  # target distance to person (meters)
-CONFIDENCE_VISIBLE_THRESHOLD = 0.5   # above this we consider target "visible"
-CONFIDENCE_LOST_THRESHOLD = 0.3      # below this we consider target "lost"
+CONFIDENCE_VISIBLE_THRESHOLD = 0.7   # above this we consider target "visible"
 
-# --- Error bucketing (x/y in same units as your CV, e.g. normalized or pixels) ---
-X_ERROR_SMALL = 0.1   # within this -> centered
-X_ERROR_LARGE = 0.3  # above this -> large
-Y_ERROR_SMALL = 0.1
-Y_ERROR_LARGE = 0.3
+# --- AOO (radial) bucketing: r = sqrt(x_error^2 + y_error^2) ---
+AOO_RADIUS_SMALL = 0.1   # r <= this -> "centered"
+AOO_RADIUS_LARGE = 0.5   # r <= this -> "moderate"; else "large"
 
 # --- Distance buckets (meters) ---
-DISTANCE_NEAR_MAX = 1.0   # distance <= this -> "near"
-DISTANCE_FAR_MIN = 2.5    # distance >= this -> "far"; else "good"
+TARGET_FOLLOW_DISTANCE = 1.5  # meters
+DISTANCE_NEAR_MAX = 1.0      # <= this -> "near"
+DISTANCE_FAR_MIN = 3.0       # >= this -> "far"
 
-# --- Altitude limits (meters) ---
-ALTITUDE_LOW_MAX = 0.5    # below -> "low"
-ALTITUDE_HIGH_MIN = 3.0   # above -> "high"; else "safe"
-ALTITUDE_HARD_MAX = 4.0   # safety: force land above this
+# --- Altitude buckets (meters) ---
+ALTITUDE_LOW_MAX = 0.5       # < this -> "low"
+ALTITUDE_HIGH_MIN = 1.5      # >= this -> "high"
+ALTITUDE_HARD_MAX = 2.0      # safety: land if exceeded
+
+# --- Lost duration buckets (seconds since target last visible) ---
+LOST_DURATION_SHORT_MAX = 5.0   # <= this -> "short"
+LOST_DURATION_MEDIUM_MAX = 15.0  # <= this -> "medium"; else "long"
 
 # --- Battery ---
 BATTERY_LOW_PCT = 30
@@ -39,20 +41,27 @@ MISSION_TIME_MAX_S = 600.0  # 10 min placeholder
 CMD_MAX = 100
 CMD_MIN = -100
 
-# --- Follow controller gains (placeholder; tune for your setup) ---
-YAW_GAIN = 40
-VERTICAL_GAIN = 30
-FORWARD_GAIN = 25
+# --- Follow controller gains  ---
+YAW_GAIN = 50
+VERTICAL_GAIN = 15
+FORWARD_GAIN = 10
+
+# --- Smith predictor (delay compensation) ---
+SMITH_TAU_S = 0.20  # prediction horizon (s)
+# --- Velocity filter (exponential smoother) ---
+VELOCITY_FILTER_ALPHA = 0.3  # α in v = α*v_raw + (1-α)*v_prev
 
 # --- Search behavior ---
 SEARCH_YAW_SPEED = 30  # slow yaw during search
 
-# --- AOO (Area of Operation) / geofence (cm) ---
-# Reference hover point = (0,0,0). x=left/right, y=forward/back, z=up/down.
-AOO_X_MIN_CM = -50
-AOO_X_MAX_CM = 50
-AOO_Y_MIN_CM = -50
-AOO_Y_MAX_CM = 50
-AOO_Z_MIN_CM = -50
-AOO_Z_MAX_CM = 50
+# --- Find object (center → follow → land) ---
+OPT_DIST_FROM_TARGET = 3.0  # distance to maintain during follow; also the "at distance" threshold for hover (meters)
+TARGET_MOTION_STILL_THRESHOLD = 0.02  # |dx|+|dy| below this -> target "still"
+
+# --- AOO (Area of Operation) / geofence: radial in xy (cm) ---
+# Reference hover point = (0,0,0). radius = sqrt(x^2 + y^2).
 AOO_MOVE_MIN_CM = 20  # Tello needs ~20 cm minimum per move
+AOO_RADIUS_MAX_CM = 141  # max radial distance (sqrt(100^2+100^2) for ~100x100 box)
+
+AOO_Z_MIN_CM = AOO_MOVE_MIN_CM
+AOO_Z_MAX_CM = 100

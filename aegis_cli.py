@@ -33,8 +33,9 @@ def main():
     if args[0] == "run" and len(args) > 1:
         script = args[1]
         script_args = args[2:]
-        # Run from project root so flight_ops (and cv) resolve when script is flight_ops/main.py
-        cwd = _PROJECT_ROOT if script.startswith("flight_ops/") or script.startswith("flight_ops\\") else None
+        # Run from project root so flight_ops/cv packages and .mediapipe/ resolve
+        cwd = _PROJECT_ROOT if (script.startswith("flight_ops/") or script.startswith("flight_ops\\")
+                                 or script.startswith("cv/") or script.startswith("cv\\")) else None
         sys.exit(subprocess.run([sys.executable, script] + script_args, cwd=cwd).returncode)
 
     print("Usage: aegis run <script> [args...]  |  aegis fly [args...]")

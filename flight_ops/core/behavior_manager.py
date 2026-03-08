@@ -11,7 +11,8 @@ from ..config.types import (
     VisionMeasurement,
     TelemetrySnapshot,
 )
-from ..control.controller import follow_control, hover_command, search_command
+from ..config import config_module as config
+from ..control.controller import follow_control, hover_command, search_command, center_command
 
 
 def get_behavior_command(
@@ -27,10 +28,16 @@ def get_behavior_command(
         return hover_command()
 
     if state == MissionState.FOLLOW:
-        return follow_control(measurement)
+        return follow_control(measurement, desired_distance_m=config.OPT_DIST_FROM_TARGET)
 
     if state == MissionState.SEARCH:
         return search_command()
+
+    if state == MissionState.CENTER:
+        return center_command(measurement)
+
+    if state == MissionState.REACQUIRE:
+        return hover_command()
 
     if state == MissionState.HOVER:
         return hover_command()
