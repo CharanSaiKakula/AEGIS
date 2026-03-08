@@ -86,3 +86,5 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+app/release/
+app/dist-electron/
