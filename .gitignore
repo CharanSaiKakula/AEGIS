@@ -87,6 +87,9 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
+# MediaPipe Tasks model cache (hand_landmarker.task)
+.mediapipe/
+
 
 # DJITelloPy
 DJITelloPy/
