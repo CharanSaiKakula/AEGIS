@@ -66,6 +66,45 @@
     box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
 }
 
+.autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--btn-radius);
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    z-index: 50;
+    overflow: hidden;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.autocomplete-item {
+    padding: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    transition: background 0.2s ease;
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover {
+    background: var(--bg-panel-hover);
+}
+
+.autocomplete-item strong {
+    color: var(--accent-cyan);
+    display: block;
+    margin-bottom: 2px;
+}
+
 /* Request Escort Panel */
 .request-panel {
     margin-top: auto;

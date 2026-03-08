@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -39,6 +39,15 @@ function createWindow() {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
+  // Explicitly allow geolocation permissions in Electron
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'geolocation') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
   } else {
@@ -65,4 +74,10 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  ipcMain.handle('get-location', () => {
+    // Native GPS mock to bypass insecure localhost Chromium context
+    return { lat: 40.0107, lng: -105.2714 }; // Defaulting campus start
+  })
+  createWindow()
+})

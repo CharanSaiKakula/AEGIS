@@ -42,7 +42,7 @@ export function renderLoginView(container, onLoginSuccess) {
         const password = passIn.value.trim();
 
         // Simple hardcoded mock credentials
-        if (username === 'admin' && password === 'sentry_command') {
+        if (username === 'admin' && password === 'admin@fly') {
             errorMsg.classList.add('hidden');
             onLoginSuccess('admin');
         } else if (username === 'charan' && password === 'student123') {

@@ -19,6 +19,6 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     return ipcRenderer.invoke(channel, ...omit)
   },
 
-  // You can expose other APTs you need here.
-  // ...
+  // You can expose other API you need here.
+  getAppLocation: () => ipcRenderer.invoke('get-location')
 })

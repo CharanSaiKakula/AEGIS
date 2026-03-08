@@ -103,13 +103,9 @@ export function renderAdminView(container) {
                     </div>
 
                     <!-- Global Map Mock -->
-                    <div class="video-feed" style="background: #111;">
-                        <div class="mock-map-bg" style="opacity: 0.3;"></div>
-                        <div class="video-overlay" style="color: var(--accent-green); border-color: rgba(0,255,136,0.3);">FLEET OVERVIEW MAP</div>
-                        
-                        <!-- Drone Icons on Map -->
-                        <div style="position: absolute; top: 40%; left: 30%; font-size: 1.5rem; text-shadow: 0 0 10px var(--accent-cyan);">🛸</div>
-                        <div style="position: absolute; top: 60%; left: 70%; font-size: 1.5rem; text-shadow: 0 0 10px var(--accent-green);">🛸</div>
+                    <div class="video-feed" style="background: #111; position: relative;">
+                        <div id="admin-map" style="position: absolute; top:0; left:0; right:0; bottom:0; border-radius: 8px;"></div>
+                        <div class="video-overlay" style="color: var(--accent-green); border-color: rgba(0,255,136,0.3); z-index: 10;">FLEET OVERVIEW MAP</div>
                     </div>
                 </div>
             </div>
@@ -167,4 +163,72 @@ export function renderAdminView(container) {
         textNoAlerts.style.display = 'block';
         container.querySelector('.admin-dashboard').style.boxShadow = 'none';
     });
+
+    // Initialize Mapbox Admin Map
+    setTimeout(() => {
+        mapboxgl.accessToken = 'pk.eyJ1IjoiY2hhcmFua2FrdWxhIiwiYSI6ImNtbWd4aG9kNjBhNjQycHB0ZGc3ZHVtdjcifQ.hWbgSljS6hkSlh56nRuOrA';
+        const adminMap = new mapboxgl.Map({
+            container: 'admin-map',
+            style: 'mapbox://styles/mapbox/dark-v11', // Dark style
+            center: [-105.2705, 40.0150], // Center on Boulder
+            zoom: 13,
+            pitch: 30 // Slight 3D tilt
+        });
+
+        // Setup 3D Buildings Layer
+        adminMap.on('style.load', () => {
+            const layers = adminMap.getStyle().layers;
+            let labelLayerId;
+            for (let i = 0; i < layers.length; i++) {
+                if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+                    labelLayerId = layers[i].id;
+                    break;
+                }
+            }
+             
+            adminMap.addLayer({
+                'id': 'add-3d-buildings',
+                'source': 'composite',
+                'source-layer': 'building',
+                'filter': ['==', 'extrude', 'true'],
+                'type': 'fill-extrusion',
+                'minzoom': 14,
+                'paint': {
+                    'fill-extrusion-color': '#1f2937', 
+                    'fill-extrusion-height': ['get', 'height'],
+                    'fill-extrusion-base': ['get', 'min_height'],
+                    'fill-extrusion-opacity': 0.9
+                }
+            }, labelLayerId);
+        });
+
+        // Add Mock Fleet Markers (Drones) with Custom HTML
+        
+        // Active Drone (Sentry-01) - Cyan
+        const el1 = document.createElement('div');
+        el1.className = 'custom-marker-drone';
+        new mapboxgl.Marker({ element: el1 })
+            .setLngLat([-105.2805, 40.0160])
+            .setPopup(new mapboxgl.Popup().setHTML("<b>Sentry-01</b><br>Active Tracking"))
+            .addTo(adminMap);
+        
+        // Idle Drone (Sentry-02) - Cyan
+        const el2 = document.createElement('div');
+        el2.className = 'custom-marker-drone';
+        new mapboxgl.Marker({ element: el2 })
+            .setLngLat([-105.2605, 40.0110])
+            .setPopup(new mapboxgl.Popup().setHTML("<b>Sentry-02</b><br>Idle"))
+            .addTo(adminMap);
+            
+        // Charging Drone (Sentry-03) - Red
+        const el3 = document.createElement('div');
+        el3.className = 'custom-marker-charging';
+        new mapboxgl.Marker({ element: el3 })
+            .setLngLat([-105.2715, 40.0180])
+            .setPopup(new mapboxgl.Popup().setHTML("<b>Sentry-03</b><br>Charging"))
+            .addTo(adminMap);
+
+        // Add Navigation controls
+        adminMap.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+    }, 100);
 }
