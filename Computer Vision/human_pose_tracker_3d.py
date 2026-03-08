@@ -1,390 +1,527 @@
-"""
-3D Human Pose Tracking with MediaPipe
-Tracks full human bodies with depth perception and 3D coordinates
-"""
-
-import cv2  # OpenCV for image processing
-import mediapipe as mp  # MediaPipe for pose detection
-from dataclasses import dataclass  # For creating data structures
-from typing import Optional, Tuple, Union  # Type hints
+import cv2
+import mediapipe as mp
 import numpy as np
-from djitellopy import Tello  # Tello drone library
+import time
+import math
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
+from djitellopy import Tello
 
 
 @dataclass
-class PoseData:
-    """Data structure to hold all information about detected human pose"""
-    detected: bool  # True if a pose is detected, False otherwise
-    x: int  # X-coordinate of pose center in pixels (0 to frame width)
-    y: int  # Y-coordinate of pose center in pixels (0 to frame height)
-    x_offset: int  # Horizontal distance from frame center (negative = left, positive = right)
-    y_offset: int  # Vertical distance from frame center (negative = up, positive = down)
-    normalized_x: float  # X position normalized to -1 (left) to 1 (right), 0 = center
-    normalized_y: float  # Y position normalized to -1 (up) to 1 (down), 0 = center
-    confidence: float  # Confidence score from MediaPipe (0.0 to 1.0)
-    pose_size: float  # Approximate pose area in pixels (width * height of bounding box)
-    depth: float  # Estimated depth (inverse of pose size, arbitrary units)
-    landmarks_3d: Optional[list]  # List of 3D landmark coordinates if available
+class TrackData:
+    detected: bool = False
+    locked: bool = False
+    state: str = "SEARCHING"
+
+    x: int = 0
+    y: int = 0
+    norm_x: float = 0.0
+    norm_y: float = 0.0
+
+    bbox: Optional[Tuple[int, int, int, int]] = None
+    confidence: float = 0.0
+
+    depth: float = 0.0              # cm if calibrated, relative otherwise
+    scale_px: float = 0.0           # body scale used for depth
+    depth_calibrated: bool = False
+
+    color_found: bool = False
+    color_center: Optional[Tuple[int, int]] = None
+    color_area: float = 0.0
 
 
-class PoseTracker3D:
-    def __init__(self, camera_source: Union[int, Tello] = 0):
-        """
-        Initialize 3D pose tracker with either a webcam or Tello drone.
+class SinglePersonTracker:
+    def __init__(
+        self,
+        source: Union[int, Tello] = 0,
+        target_color: str = "magenta",
+        min_color_area: int = 120,
+        search_pad: int = 180,
+        reacquire_pad: int = 120,
+        refresh_sec: float = 0.75,
+        reference_distance_cm: float = 150.0,
+        auto_calibrate: bool = True,
+        depth_alpha: float = 0.25,
+    ):
+        self.is_tello = isinstance(source, Tello)
+        self.tello = source if self.is_tello else None
+        self.frame_read = None
 
-        Args:
-            camera_source: Either an int (camera ID) or Tello object
-        """
-        # Detect if using Tello or webcam
-        self.is_tello = isinstance(camera_source, Tello)
+        if not self.is_tello:
+            self.cap = cv2.VideoCapture(source)
+            if not self.cap.isOpened():
+                raise RuntimeError(f"Could not open camera source {source}")
 
-        if self.is_tello:
-            # Store Tello object - frame reader will be initialized later after connect/streamon
-            self.tello = camera_source
-            self.frame_read = None  # Will be set after Tello is ready
-        # MediaPipe Pose solution with 3D tracking enabled
-        self.mp_pose = mp.solutions.pose.Pose(
+        self.pose = mp.solutions.pose.Pose(
             static_image_mode=False,
-            model_complexity=1,  # 0=Lite, 1=Full, 2=Heavy (more accurate but slower)
-            smooth_landmarks=True,  # Smooth landmark positions
-            enable_segmentation=False,  # Don't need segmentation for tracking
-            smooth_segmentation=True,
+            model_complexity=1,
+            smooth_landmarks=True,
+            enable_segmentation=False,
             min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_tracking_confidence=0.5,
         )
 
-        # MediaPipe drawing utilities for visualizing pose landmarks
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.min_color_area = min_color_area
+        self.search_pad = search_pad
+        self.reacquire_pad = reacquire_pad
+        self.refresh_sec = refresh_sec
+        self.lower_hsv, self.upper_hsv = self._hsv_range(target_color)
 
-    def get_pose_data(self) -> Tuple[Optional[np.ndarray], PoseData]:
-        """
-        Capture a frame from the camera/Tello and detect human pose with 3D tracking.
+        self.locked = False
+        self.tracker = None
+        self.last_bbox = None
+        self.last_refresh = 0.0
 
-        Returns:
-            A tuple containing:
-            - frame: The captured image (BGR format), or None if capture failed
-            - pose_data: PoseData object with detection results
-        """
-        # Read frame from appropriate source (Tello or webcam)
+        self.reference_distance_cm = reference_distance_cm
+        self.auto_calibrate = auto_calibrate
+        self.depth_scale = None      # reference_distance_cm * body_scale_px
+        self.depth_alpha = depth_alpha
+        self.smooth_depth = None
+
+    # ---------- basic helpers ----------
+
+    def _hsv_range(self, name: str):
+        presets = {
+            "magenta": (np.array([120, 70, 70]), np.array([175, 255, 255])),
+            "green":   (np.array([40, 80, 80]),  np.array([85, 255, 255])),
+            "cyan":    (np.array([80, 90, 90]),  np.array([105, 255, 255])),
+            "orange":  (np.array([5, 120, 120]), np.array([20, 255, 255])),
+        }
+        return presets.get(name.lower(), presets["magenta"])
+
+    def set_custom_hsv(self, lower, upper):
+        self.lower_hsv = np.array(lower, dtype=np.uint8)
+        self.upper_hsv = np.array(upper, dtype=np.uint8)
+
+    def _clip(self, x1, y1, x2, y2, shape):
+        h, w = shape[:2]
+        return (
+            max(0, min(w - 1, x1)),
+            max(0, min(h - 1, y1)),
+            max(1, min(w, x2)),
+            max(1, min(h, y2)),
+        )
+
+    def _dist(self, a, b):
+        return float(math.hypot(a[0] - b[0], a[1] - b[1]))
+
+    def _smooth(self, value: float) -> float:
+        if value <= 0:
+            return self.smooth_depth if self.smooth_depth is not None else 0.0
+        if self.smooth_depth is None:
+            self.smooth_depth = value
+        else:
+            a = self.depth_alpha
+            self.smooth_depth = a * value + (1 - a) * self.smooth_depth
+        return self.smooth_depth
+
+    def _depth_from_scale(self, body_scale_px: float, allow_calibration=False) -> float:
+        if body_scale_px <= 1:
+            return self.smooth_depth if self.smooth_depth is not None else 0.0
+
+        if allow_calibration and self.auto_calibrate and self.depth_scale is None:
+            self.depth_scale = self.reference_distance_cm * body_scale_px
+
+        raw = (self.depth_scale / body_scale_px) if self.depth_scale else (1000.0 / body_scale_px)
+        return self._smooth(raw)
+
+    def _tracker_factory(self):
+        if hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerCSRT_create"):
+            return cv2.legacy.TrackerCSRT_create()
+        if hasattr(cv2, "TrackerCSRT_create"):
+            return cv2.TrackerCSRT_create()
+        if hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerKCF_create"):
+            return cv2.legacy.TrackerKCF_create()
+        if hasattr(cv2, "TrackerKCF_create"):
+            return cv2.TrackerKCF_create()
+        raise RuntimeError("No CSRT/KCF tracker found in this OpenCV build.")
+
+    def _init_tracker(self, frame, bbox):
+        x1, y1, x2, y2 = bbox
+        w = max(1, x2 - x1)
+        h = max(1, y2 - y1)
+        self.tracker = self._tracker_factory()
+        self.tracker.init(frame, (x1, y1, w, h))
+        self.locked = True
+        self.last_bbox = bbox
+        self.last_refresh = time.time()
+
+    # ---------- frame + color ----------
+
+    def _get_frame(self):
         if self.is_tello:
-            # Initialize frame reader if not done yet
             if self.frame_read is None:
                 self.frame_read = self.tello.get_frame_read()
-            
-            # Get frame from Tello drone stream
             frame = self.frame_read.frame
-            # Check if frame is valid
             if frame is None:
-                return None, PoseData(
-                    detected=False, x=0, y=0, x_offset=0, y_offset=0,
-                    normalized_x=0.0, normalized_y=0.0, confidence=0.0,
-                    pose_size=0.0, depth=0.0, landmarks_3d=None
-                )
+                return None
         else:
-            # Get frame from standard webcam using OpenCV
-            ret, frame = self.camera.read()
-            if not ret:
-                return None, PoseData(
-                    detected=False, x=0, y=0, x_offset=0, y_offset=0,
-                    normalized_x=0.0, normalized_y=0.0, confidence=0.0,
-                    pose_size=0.0, depth=0.0, landmarks_3d=None
-                )
+            ok, frame = self.cap.read()
+            if not ok:
+                return None
+        return cv2.flip(frame, 1)
 
-        # Flip the frame horizontally to create a mirror effect (optional for Tello)
-        frame = cv2.flip(frame, 1)
+    def _find_color(self, frame):
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.lower_hsv, self.upper_hsv)
 
-        # Process the frame for pose detection
-        pose_data = self._detect_pose(frame)
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-        return frame, pose_data
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None, 0.0
 
-    def _detect_pose(self, frame: np.ndarray) -> PoseData:
-        """
-        Internal method to process the frame and extract pose data using MediaPipe.
+        c = max(contours, key=cv2.contourArea)
+        area = float(cv2.contourArea(c))
+        if area < self.min_color_area:
+            return None, area
 
-        Args:
-            frame: Input image in BGR format
+        x, y, w, h = cv2.boundingRect(c)
+        return (x + w // 2, y + h // 2), area
 
-        Returns:
-            PoseData object with detection results
-        """
-        # Get actual frame dimensions
+    # ---------- pose logic ----------
+
+    def _state_from_bbox(self, frame, bbox, state="TRACKER_ONLY"):
         h, w = frame.shape[:2]
-        center_x = w // 2
-        center_y = h // 2
+        cx_frame, cy_frame = w // 2, h // 2
+        x1, y1, x2, y2 = self._clip(*bbox, frame.shape)
 
-        # Convert BGR image to RGB as required by MediaPipe
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+        bw = max(1, x2 - x1)
+        bh = max(1, y2 - y1)
 
-        # Run MediaPipe pose detection on the RGB frame
-        results = self.mp_pose.process(rgb_frame)
+        # fallback scale from height, not width
+        body_scale_px = max(1.0, bh * 0.45)
+        depth = self._depth_from_scale(body_scale_px, allow_calibration=False)
 
-        # Check if any pose was detected
-        if results.pose_landmarks:
-            # Get pose landmarks
-            pose_landmarks = results.pose_landmarks
+        return TrackData(
+            detected=True,
+            locked=self.locked,
+            state=state,
+            x=cx,
+            y=cy,
+            norm_x=max(-1.0, min(1.0, (cx - cx_frame) / max(1, cx_frame))),
+            norm_y=max(-1.0, min(1.0, (cy - cy_frame) / max(1, cy_frame))),
+            bbox=(x1, y1, x2, y2),
+            confidence=0.75,
+            depth=depth,
+            scale_px=body_scale_px,
+            depth_calibrated=self.depth_scale is not None,
+        )
 
-            # Calculate pose center by averaging key landmark positions
-            # Use major body landmarks for center calculation
-            key_landmarks = [
-                pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP],
-                pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_HIP],
-                pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER],
-                pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER],
-            ]
+    def _pose_in_roi(self, frame, roi, color_center=None, color_area=0.0, calibrate=False, state="POSE"):
+        H, W = frame.shape[:2]
+        frame_cx, frame_cy = W // 2, H // 2
 
-            # Calculate average position
-            avg_x = sum(lm.x for lm in key_landmarks) / len(key_landmarks)
-            avg_y = sum(lm.y for lm in key_landmarks) / len(key_landmarks)
+        x1, y1, x2, y2 = roi
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return TrackData(state=state, locked=self.locked, color_found=color_center is not None,
+                             color_center=color_center, color_area=color_area)
 
-            # Convert normalized coordinates to pixel coordinates
-            pixel_x = int(avg_x * w)
-            pixel_y = int(avg_y * h)
+        rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        res = self.pose.process(rgb)
+        if not res.pose_landmarks:
+            return TrackData(state=state, locked=self.locked, color_found=color_center is not None,
+                             color_center=color_center, color_area=color_area)
 
-            # Calculate pixel offsets from frame center
-            x_offset = pixel_x - center_x
-            y_offset = pixel_y - center_y
+        lm = res.pose_landmarks.landmark
+        P = mp.solutions.pose.PoseLandmark
 
-            # Normalize offsets to -1 to 1 range for consistent control
-            normalized_x = x_offset / center_x if center_x > 0 else 0.0
-            normalized_y = y_offset / center_y if center_y > 0 else 0.0
+        idx_ls, idx_rs = P.LEFT_SHOULDER.value, P.RIGHT_SHOULDER.value
+        idx_lh, idx_rh = P.LEFT_HIP.value, P.RIGHT_HIP.value
 
-            # Ensure normalized values stay within bounds
-            normalized_x = max(-1.0, min(1.0, normalized_x))
-            normalized_y = max(-1.0, min(1.0, normalized_y))
+        pts = [(int(p.x * (x2 - x1)) + x1, int(p.y * (y2 - y1)) + y1) for p in lm]
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        bbox = self._clip(min(xs), min(ys), max(xs), max(ys), frame.shape)
 
-            # Get detection confidence score from MediaPipe
-            confidence = results.pose_world_landmarks is not None
+        ls, rs, lh, rh = pts[idx_ls], pts[idx_rs], pts[idx_lh], pts[idx_rh]
 
-            # Estimate pose size using bounding box of all landmarks
-            x_coords = [int(lm.x * w) for lm in pose_landmarks.landmark]
-            y_coords = [int(lm.y * h) for lm in pose_landmarks.landmark]
-            width = max(x_coords) - min(x_coords)
-            height = max(y_coords) - min(y_coords)
-            pose_size = float(width * height)  # Area approximation
+        shoulder_mid = ((ls[0] + rs[0]) // 2, (ls[1] + rs[1]) // 2)
+        hip_mid = ((lh[0] + rh[0]) // 2, (lh[1] + rh[1]) // 2)
 
-            # Estimate depth using inverse of pose size (larger pose = closer = smaller depth value)
-            depth = 100000.0 / (pose_size + 1) if pose_size > 0 else 0.0
+        shoulder_width = self._dist(ls, rs)
+        torso_height = self._dist(shoulder_mid, hip_mid)
 
-            # Extract 3D landmarks if available
-            landmarks_3d = None
-            if results.pose_world_landmarks:
-                landmarks_3d = [
-                    (lm.x, lm.y, lm.z) for lm in results.pose_world_landmarks.landmark
-                ]
+        # Rotation-robust body scale:
+        # height dominates, width only helps a bit when frontal
+        if torso_height <= 1.0:
+            torso_height = max(1.0, (bbox[3] - bbox[1]) * 0.45)
 
-            # Return complete pose data
-            return PoseData(
-                detected=True,
-                x=pixel_x,
-                y=pixel_y,
-                x_offset=x_offset,
-                y_offset=y_offset,
-                normalized_x=normalized_x,
-                normalized_y=normalized_y,
-                confidence=confidence,
-                pose_size=pose_size,
-                depth=depth,
-                landmarks_3d=landmarks_3d
-            )
+        frontal_ratio = shoulder_width / max(torso_height, 1.0)
+        if frontal_ratio > 0.6:
+            body_scale_px = 0.75 * torso_height + 0.25 * shoulder_width
         else:
-            # No pose detected, return default values
-            return PoseData(
-                detected=False, x=0, y=0, x_offset=0, y_offset=0,
-                normalized_x=0.0, normalized_y=0.0, confidence=0.0,
-                pose_size=0.0, depth=0.0, landmarks_3d=None
+            body_scale_px = torso_height
+
+        depth = self._depth_from_scale(body_scale_px, allow_calibration=calibrate)
+
+        center_x = int((ls[0] + rs[0] + lh[0] + rh[0]) / 4)
+        center_y = int((ls[1] + rs[1] + lh[1] + rh[1]) / 4)
+
+        vis = []
+        for i in [idx_ls, idx_rs, idx_lh, idx_rh]:
+            vis.append(float(getattr(lm[i], "visibility", 0.0)))
+        confidence = float(np.mean(vis))
+
+        if color_center is not None:
+            cx, cy = color_center
+            bx1, by1, bx2, by2 = bbox
+            margin = 25
+            inside = (bx1 - margin <= cx <= bx2 + margin) and (by1 - margin <= cy <= by2 + margin)
+            if not inside:
+                return TrackData(
+                    state="COLOR_NOT_ON_PERSON",
+                    locked=self.locked,
+                    color_found=True,
+                    color_center=color_center,
+                    color_area=color_area,
+                )
+
+        return TrackData(
+            detected=True,
+            locked=self.locked,
+            state=state,
+            x=center_x,
+            y=center_y,
+            norm_x=max(-1.0, min(1.0, (center_x - frame_cx) / max(1, frame_cx))),
+            norm_y=max(-1.0, min(1.0, (center_y - frame_cy) / max(1, frame_cy))),
+            bbox=bbox,
+            confidence=confidence,
+            depth=depth,
+            scale_px=body_scale_px,
+            depth_calibrated=self.depth_scale is not None,
+            color_found=color_center is not None,
+            color_center=color_center,
+            color_area=color_area,
+        )
+
+    # ---------- main update ----------
+
+    def update(self):
+        frame = self._get_frame()
+        if frame is None:
+            return None, TrackData(state="NO_FRAME", locked=self.locked)
+
+        now = time.time()
+        h, w = frame.shape[:2]
+
+        # After first lock, ignore color forever
+        if self.locked and self.tracker is not None:
+            ok, tracked = self.tracker.update(frame)
+
+            if ok:
+                x, y, bw, bh = [int(v) for v in tracked]
+                bbox = self._clip(x, y, x + bw, y + bh, frame.shape)
+                self.last_bbox = bbox
+
+                x1, y1, x2, y2 = bbox
+                roi = self._clip(x1 - 50, y1 - 50, x2 + 50, y2 + 50, frame.shape)
+                data = self._pose_in_roi(frame, roi, calibrate=False, state="TRACKING")
+
+                if data.detected and data.bbox is not None:
+                    data.locked = True
+                    self.last_bbox = data.bbox
+
+                    if now - self.last_refresh >= self.refresh_sec:
+                        self._init_tracker(frame, data.bbox)
+                        self.last_refresh = now
+                    return frame, data
+
+                return frame, self._state_from_bbox(frame, bbox, state="TRACKER_ONLY")
+
+            # local reacquire near last bbox
+            if self.last_bbox is not None:
+                x1, y1, x2, y2 = self.last_bbox
+                roi = self._clip(x1 - self.reacquire_pad, y1 - self.reacquire_pad,
+                                 x2 + self.reacquire_pad, y2 + self.reacquire_pad, frame.shape)
+                data = self._pose_in_roi(frame, roi, calibrate=False, state="REACQUIRE_LOCAL")
+                if data.detected and data.bbox is not None:
+                    self._init_tracker(frame, data.bbox)
+                    data.locked = True
+                    return frame, data
+
+            # full frame fallback because you only care about one person
+            data = self._pose_in_roi(frame, (0, 0, w, h), calibrate=False, state="REACQUIRE_FULL")
+            if data.detected and data.bbox is not None:
+                self._init_tracker(frame, data.bbox)
+                data.locked = True
+                return frame, data
+
+            return frame, TrackData(state="LOST", locked=True, depth=self.smooth_depth or 0.0,
+                                    depth_calibrated=self.depth_scale is not None)
+
+        # Before first lock, require color
+        color_center, color_area = self._find_color(frame)
+        if color_center is not None:
+            cx, cy = color_center
+            roi = self._clip(cx - self.search_pad, cy - self.search_pad,
+                             cx + self.search_pad, cy + self.search_pad, frame.shape)
+            data = self._pose_in_roi(
+                frame,
+                roi,
+                color_center=color_center,
+                color_area=color_area,
+                calibrate=True,
+                state="LOCKING",
+            )
+            if data.detected and data.bbox is not None:
+                self._init_tracker(frame, data.bbox)
+                data.locked = True
+                data.state = "LOCKED"
+                return frame, data
+
+            return frame, TrackData(
+                state="COLOR_FOUND",
+                locked=False,
+                color_found=True,
+                color_center=color_center,
+                color_area=color_area,
+                depth=self.smooth_depth or 0.0,
+                depth_calibrated=self.depth_scale is not None,
             )
 
-    def draw_debug(self, frame: np.ndarray, pose_data: PoseData) -> Optional[np.ndarray]:
-        """
-        Draw debug information on the frame for visualization.
+        return frame, TrackData(
+            state="SEARCHING",
+            locked=False,
+            depth=self.smooth_depth or 0.0,
+            depth_calibrated=self.depth_scale is not None,
+        )
 
-        Args:
-            frame: Input image to draw on
-            pose_data: Current pose detection data
+    # ---------- drawing / cleanup ----------
 
-        Returns:
-            Modified frame with debug drawings
-        """
+    def draw(self, frame, data: TrackData):
         if frame is None:
             return None
 
-        # Draw center crosshair for reference
         h, w = frame.shape[:2]
-        center_x = w // 2
-        center_y = h // 2
-        cv2.line(frame, (center_x - 20, center_y), (center_x + 20, center_y), (0, 255, 0), 2)
-        cv2.line(frame, (center_x, center_y - 20), (center_x, center_y + 20), (0, 255, 0), 2)
+        cx, cy = w // 2, h // 2
+        cv2.line(frame, (cx - 20, cy), (cx + 20, cy), (0, 255, 0), 2)
+        cv2.line(frame, (cx, cy - 20), (cx, cy + 20), (0, 255, 0), 2)
 
-        # Re-process frame for drawing (necessary for landmark visualization)
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.mp_pose.process(rgb_frame)
+        if data.color_found and data.color_center is not None:
+            x, y = data.color_center
+            cv2.circle(frame, (x, y), 8, (255, 0, 255), -1)
+            cv2.putText(frame, "COLOR", (x + 8, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 0, 255), 2)
 
-        # Draw MediaPipe pose landmarks and connections if detected
-        if results.pose_landmarks:
-            self.mp_drawing.draw_landmarks(
-                frame,
-                results.pose_landmarks,
-                mp.solutions.pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style()
-            )
+        if data.bbox is not None:
+            x1, y1, x2, y2 = data.bbox
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
-        # Draw pose center and data if pose is detected
-        if pose_data.detected:
-            # Green circle at pose center
-            cv2.circle(frame, (pose_data.x, pose_data.y), 10, (0, 255, 0), -1)
+        if data.detected:
+            cv2.circle(frame, (data.x, data.y), 7, (0, 255, 0), -1)
+            cv2.line(frame, (cx, cy), (data.x, data.y), (255, 0, 0), 2)
 
-            # Blue line from center to pose
-            cv2.line(frame, (center_x, center_y), (pose_data.x, pose_data.y), (255, 0, 0), 2)
+        unit = "cm" if data.depth_calibrated else "rel"
+        lines = [
+            f"State: {data.state}",
+            f"Locked: {data.locked}",
+            f"Detected: {data.detected}",
+            f"Color: {data.color_found} area={data.color_area:.1f}",
+            f"Center: ({data.x}, {data.y})",
+            f"Norm: ({data.norm_x:.2f}, {data.norm_y:.2f})",
+            f"Conf: {data.confidence:.2f}",
+            f"Scale: {data.scale_px:.1f}px",
+            f"Depth: {data.depth:.1f} {unit}",
+        ]
 
-            # Text information overlay
-            info_lines = [
-                f"Pose Detected: {pose_data.detected}",
-                f"Pose Center: ({pose_data.x}, {pose_data.y})",
-                f"Offset: ({pose_data.x_offset}, {pose_data.y_offset})",
-                f"Normalized: ({pose_data.normalized_x:.2f}, {pose_data.normalized_y:.2f})",
-                f"Confidence: {pose_data.confidence:.2f}",
-                f"Size: {pose_data.pose_size:.1f}px",
-                f"Depth: {pose_data.depth:.2f}",
-                f"3D Landmarks: {len(pose_data.landmarks_3d) if pose_data.landmarks_3d else 0}"
-            ]
-
-            # Draw text background and text
-            for i, text in enumerate(info_lines):
-                # Draw black background rectangle
-                (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                cv2.rectangle(frame, (10, 10 + i * 25), (10 + text_width, 10 + text_height + i * 25 + 5), (0, 0, 0), -1)
-                # Draw white text
-                cv2.putText(frame, text, (10, 30 + i * 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        for i, line in enumerate(lines):
+            (tw, th), _ = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            y0 = 10 + i * 24
+            cv2.rectangle(frame, (10, y0), (18 + tw, y0 + th + 8), (0, 0, 0), -1)
+            cv2.putText(frame, line, (14, y0 + th + 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         return frame
 
     def release(self):
-        """Release camera resources"""
-        if not self.is_tello:
-            if hasattr(self, 'camera'):
-                self.camera.release()
+        if not self.is_tello and hasattr(self, "cap"):
+            self.cap.release()
 
 
-# ============================================================================
-# STANDALONE TEST FUNCTIONS
-# ============================================================================
-
-def test_webcam():
-    """Test pose tracking with webcam"""
-    print("Testing 3D Pose Tracking with Webcam...")
-    print("Press 'q' to quit, 'd' to toggle debug drawing")
-
-    tracker = PoseTracker3D(camera_source=0)
-    debug_mode = True
+def run_demo(use_tello=True):
+    tracker = None
+    tello = None
+    debug = True
+    frame_count = 0
 
     try:
+        if use_tello:
+            tello = Tello()
+            print("Connecting to Tello...")
+            tello.connect()
+            print(f"Battery: {tello.get_battery()}%")
+            tello.streamon()
+            time.sleep(2)
+            tello.takeoff()
+            time.sleep(1)
+            tello.move_up(60)
+            time.sleep(1)
+
+            tracker = SinglePersonTracker(
+                source=tello,
+                target_color="magenta",
+                min_color_area=120,
+                reference_distance_cm=150.0,
+            )
+        else:
+            tracker = SinglePersonTracker(
+                source=0,
+                target_color="magenta",
+                min_color_area=120,
+                reference_distance_cm=150.0,
+            )
+
+        print("Press q to quit, d to toggle debug.")
+        print("Show the color once near your chest to get the first lock.")
+
         while True:
-            frame, pose_data = tracker.get_pose_data()
-
+            frame, data = tracker.update()
             if frame is not None:
-                if debug_mode:
-                    frame = tracker.draw_debug(frame, pose_data)
+                show = tracker.draw(frame.copy(), data) if debug else frame
+                cv2.imshow("Single Person Tracker", show)
 
-                cv2.imshow("3D Human Pose Tracking", frame)
-
-            # Handle key presses
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
+            if key == ord("q"):
                 break
-            elif key == ord('d'):
-                debug_mode = not debug_mode
-                print(f"Debug mode: {'ON' if debug_mode else 'OFF'}")
+            elif key == ord("d"):
+                debug = not debug
 
-            # Print pose data every 30 frames
-            if hasattr(tracker, 'frame_count'):
-                tracker.frame_count = getattr(tracker, 'frame_count', 0) + 1
-                if tracker.frame_count % 30 == 0:
-                    status = "DETECTED" if pose_data.detected else "NOT DETECTED"
-                    print(f"[{tracker.frame_count}] {status} - "
-                          f"Pos: ({pose_data.x}, {pose_data.y}) | "
-                          f"Depth: {pose_data.depth:.2f}")
-
-    except KeyboardInterrupt:
-        print("Interrupted by user")
-
-    finally:
-        tracker.release()
-        cv2.destroyAllWindows()
-        print("Webcam test complete.")
-
-
-def test_tello():
-    """Test pose tracking with Tello drone camera feed"""
-    print("Testing 3D Pose Tracking with Tello Drone Camera...")
-    print("Make sure Tello is connected.")
-    print("Press 'q' to quit, 'd' to toggle debug drawing")
-
-    tello = Tello()
-    
-    try:
-        print("Connecting to Tello...")
-        tello.connect()
-        print(f"Battery: {tello.get_battery()}%")
-
-        print("Starting video stream...")
-        tello.streamon()
-        
-        # Now initialize pose tracker after Tello is connected and streaming
-        tracker = PoseTracker3D(camera_source=tello)
-        debug_mode = True
-
-        print("Human pose detection active! Press 'q' to quit.")
-
-        frame_count = 0
-        while True:
-            frame, pose_data = tracker.get_pose_data()
-
-            if frame is not None:
-                if debug_mode:
-                    frame = tracker.draw_debug(frame, pose_data)
-
-                cv2.imshow("Tello 3D Human Pose Detection", frame)
-
-            # Handle key presses
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('d'):
-                debug_mode = not debug_mode
-                print(f"Debug mode: {'ON' if debug_mode else 'OFF'}")
-
-            # Print pose data every 30 frames
             frame_count += 1
             if frame_count % 30 == 0:
-                status = "DETECTED" if pose_data.detected else "NOT DETECTED"
-                print(f"[{frame_count}] {status} - "
-                      f"Pos: ({pose_data.x}, {pose_data.y}) | "
-                      f"Depth: {pose_data.depth:.2f}")
-
-    except KeyboardInterrupt:
-        print("Interrupted by user")
+                unit = "cm" if data.depth_calibrated else "rel"
+                print(
+                    f"[{frame_count}] state={data.state} "
+                    f"locked={data.locked} detected={data.detected} "
+                    f"depth={data.depth:.1f} {unit}"
+                )
 
     finally:
-        print("Cleaning up...")
-        try:
-            tello.streamoff()
-        except:
-            pass
-        try:
-            tello.end()
-        except:
-            pass
-        tracker.release()
+        if tello is not None:
+            try:
+                tello.land()
+            except:
+                pass
+            try:
+                tello.streamoff()
+            except:
+                pass
+            try:
+                tello.end()
+            except:
+                pass
+
+        if tracker is not None:
+            tracker.release()
+
         cv2.destroyAllWindows()
-        print("Tello camera test complete.")
 
 
 if __name__ == "__main__":
     import sys
-
-    if len(sys.argv) > 1 and sys.argv[1] == "webcam":
-        test_webcam()
-    else:
-        test_tello()
+    use_tello = not (len(sys.argv) > 1 and sys.argv[1].lower() == "webcam")
+    run_demo(use_tello=use_tello)
