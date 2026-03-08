@@ -45,4 +45,14 @@ VERTICAL_GAIN = 30
 FORWARD_GAIN = 25
 
 # --- Search behavior ---
-SEARCH_YAW_SPEED = 20  # slow yaw during search
+SEARCH_YAW_SPEED = 30  # slow yaw during search
+
+# --- AOO (Area of Operation) / geofence (cm) ---
+# Reference hover point = (0,0,0). x=left/right, y=forward/back, z=up/down.
+AOO_X_MIN_CM = -50
+AOO_X_MAX_CM = 50
+AOO_Y_MIN_CM = -50
+AOO_Y_MAX_CM = 50
+AOO_Z_MIN_CM = -50
+AOO_Z_MAX_CM = 50
+AOO_MOVE_MIN_CM = 20  # Tello needs ~20 cm minimum per move

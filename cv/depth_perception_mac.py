@@ -226,7 +226,7 @@ if __name__ == '__main__':
                 text = (f"pix=({data.x_pix},{data.y_pix}) err=({data.x_error:.2f},{data.y_error:.2f}) "
                         f"dist={data.distance:.1f} z={data.z_norm:.3f} conf={data.confidence:.2f}")
                 cv2.putText(frame, text, (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0),2)
-            cv2.imshow('3D Hand Tracker', frame)
+            cv2.imshow('3D Hand Tracker (Mac)', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
     finally:

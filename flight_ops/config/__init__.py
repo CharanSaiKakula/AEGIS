@@ -8,6 +8,7 @@ from .types import (
     DiscreteState,
 )
 from . import config as config_module
+from .aoo import AOO, execute_geofenced_move
 
 __all__ = [
     "MissionState",
@@ -16,4 +17,6 @@ __all__ = [
     "TelemetrySnapshot",
     "DiscreteState",
     "config_module",
+    "AOO",
+    "execute_geofenced_move",
 ]

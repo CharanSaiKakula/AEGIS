@@ -8,6 +8,23 @@ This module exposes the interface and a mock provider for development and testin
 from ..config.types import VisionMeasurement
 
 
+def read_measurement_from_tracker(tracker) -> VisionMeasurement:
+    """
+    Read from DepthHandTracker, convert to VisionMeasurement.
+    Tracker must have .read() -> (hand_data, frame) where hand_data has
+    x_error, y_error, distance, confidence; or None.
+    """
+    hand_data, _ = tracker.read()
+    if hand_data is None:
+        return VisionMeasurement(x_error=0.0, y_error=0.0, distance=0.0, confidence=0.0)
+    return VisionMeasurement(
+        x_error=hand_data.x_error,
+        y_error=hand_data.y_error,
+        distance=hand_data.distance,
+        confidence=hand_data.confidence,
+    )
+
+
 def get_vision_measurement() -> VisionMeasurement:
     """
     Return the current vision measurement from the CV pipeline.

@@ -1,6 +1,10 @@
 """Perception: extractor interface and state extraction."""
 
-from .extractor_interface import get_vision_measurement, MockExtractor
+from .extractor_interface import (
+    get_vision_measurement,
+    read_measurement_from_tracker,
+    MockExtractor,
+)
 from .state_extractor import (
     extract_discrete_state,
     bucket_x_error,
@@ -15,6 +19,7 @@ from .state_extractor import (
 
 __all__ = [
     "get_vision_measurement",
+    "read_measurement_from_tracker",
     "MockExtractor",
     "extract_discrete_state",
     "bucket_x_error",

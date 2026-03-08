@@ -1,9 +1,49 @@
-import cv2  
-import mediapipe as mp  
-from dataclasses import dataclass  
-from typing import Optional, Tuple 
+import os
+
+import cv2
+import mediapipe as mp
 import numpy as np
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
 from djitellopy import Tello
+
+# Support both legacy mp.solutions (e.g. Windows) and mp.tasks (e.g. Mac 0.10.30+)
+_USE_LEGACY = hasattr(mp, "solutions")
+
+if not _USE_LEGACY:
+    from mediapipe.tasks.python.vision.core import image as _mp_image
+    from mediapipe.tasks.python.vision import hand_landmarker as _hand_landmarker_module
+
+    _HandLandmarker = _hand_landmarker_module.HandLandmarker
+    _HAND_MODEL_URL = (
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+        "hand_landmarker/float16/latest/hand_landmarker.task"
+    )
+
+    def _hand_model_path() -> str:
+        path = os.environ.get("MEDIAPIPE_HAND_MODEL")
+        if path and os.path.isfile(path):
+            return path
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for cache_dir in (
+            os.path.join(_project_root, ".mediapipe"),
+            os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "mediapipe"),
+        ):
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+                path = os.path.join(cache_dir, "hand_landmarker.task")
+                if not os.path.isfile(path):
+                    import urllib.request
+                    urllib.request.urlretrieve(_HAND_MODEL_URL, path)
+                return path
+            except (OSError, PermissionError):
+                continue
+        raise FileNotFoundError(
+            "Could not create cache dir for hand_landmarker.task. "
+            "Set MEDIAPIPE_HAND_MODEL to a hand_landmarker.task path."
+        )
+
 
 @dataclass
 class HandData:
@@ -41,14 +81,21 @@ class HandTracker:
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480) if not self.is_tello else None
         self.camera.set(cv2.CAP_PROP_FPS, 30) if not self.is_tello else None
 
-        # Initialize MediaPipe
-        self.mp_hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        self.mp_drawing = mp.solutions.drawing_utils
+        # Initialize MediaPipe (legacy or Tasks API)
+        if _USE_LEGACY:
+            self._legacy_hands = mp.solutions.hands.Hands(
+                static_image_mode=False,
+                max_num_hands=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            self._mp_drawing = mp.solutions.drawing_utils
+            self._tasks_landmarker = None
+        else:
+            self._legacy_hands = None
+            self._mp_drawing = None
+            model_path = _hand_model_path()
+            self._tasks_landmarker = _HandLandmarker.create_from_model_path(model_path)
 
         # Frame dimensions
         self.frame_width = 640
@@ -90,84 +137,96 @@ class HandTracker:
         return frame, hand_data
 
     def _detect_hand(self, frame: np.ndarray) -> HandData:
-        """
-        Internal method to process the frame and extract hand data using MediaPipe.
-
-        Args:
-            frame: Input image in BGR format
-
-        Returns:
-            HandData object with detection results
-        """
-        # Convert BGR image to RGB as required by MediaPipe
+        """Process frame and extract hand data via MediaPipe (legacy or Tasks API)."""
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if _USE_LEGACY:
+            return self._detect_legacy(rgb_frame)
+        return self._detect_tasks(rgb_frame)
 
-        # Run MediaPipe hand detection on the RGB frame
-        results = self.mp_hands.process(rgb_frame)
-
-        # Check if any hands were detected
-        if results.multi_hand_landmarks:
-            # Use the first (and only) detected hand
-            hand_landmarks = results.multi_hand_landmarks[0]
-
-            # Calculate palm center by averaging key landmark positions
-            # Landmarks: 0=wrist, 5=index base, 9=middle base, 13=ring base, 17=pinky base
-            palm_points = [
-                hand_landmarks.landmark[0],   # Wrist landmark
-                hand_landmarks.landmark[5],   # Base of index finger
-                hand_landmarks.landmark[9],   # Base of middle finger
-                hand_landmarks.landmark[13],  # Base of ring finger
-                hand_landmarks.landmark[17]   # Base of pinky finger
-            ]
-
-            # Compute average x and y coordinates (normalized 0-1)
-            avg_x = sum(point.x for point in palm_points) / len(palm_points)
-            avg_y = sum(point.y for point in palm_points) / len(palm_points)
-
-            # Convert normalized coordinates to pixel coordinates
-            pixel_x = int(avg_x * self.frame_width)
-            pixel_y = int(avg_y * self.frame_height)
-
-            # Calculate pixel offsets from frame center
-            x_offset = pixel_x - self.center_x
-            y_offset = pixel_y - self.center_y
-
-            # Normalize offsets to -1 to 1 range for consistent control
-            normalized_x = x_offset / self.center_x
-            normalized_y = y_offset / self.center_y
-
-            # Ensure normalized values stay within bounds
-            normalized_x = max(-1.0, min(1.0, normalized_x))
-            normalized_y = max(-1.0, min(1.0, normalized_y))
-
-            # Get detection confidence score from MediaPipe
-            confidence = results.multi_handedness[0].classification[0].score if results.multi_handedness else 1.0
-
-            # Estimate hand size using bounding box of all landmarks
-            x_coords = [int(lm.x * self.frame_width) for lm in hand_landmarks.landmark]
-            y_coords = [int(lm.y * self.frame_height) for lm in hand_landmarks.landmark]
-            width = max(x_coords) - min(x_coords)
-            height = max(y_coords) - min(y_coords)
-            hand_size = float(width * height)  # Area approximation
-
-            # Return complete hand data
-            return HandData(
-                detected=True,
-                x=pixel_x,
-                y=pixel_y,
-                x_offset=x_offset,
-                y_offset=y_offset,
-                normalized_x=normalized_x,
-                normalized_y=normalized_y,
-                confidence=confidence,
-                hand_size=hand_size
-            )
-        else:
-            # No hand detected, return default values
+    def _detect_legacy(self, rgb_frame: np.ndarray) -> HandData:
+        results = self._legacy_hands.process(rgb_frame)
+        if not results.multi_hand_landmarks:
             return HandData(
                 detected=False, x=0, y=0, x_offset=0, y_offset=0,
-                normalized_x=0.0, normalized_y=0.0, confidence=0.0, hand_size=0.0
+                normalized_x=0.0, normalized_y=0.0, confidence=0.0, hand_size=0.0,
             )
+        lm = results.multi_hand_landmarks[0]
+        return self._landmarks_to_hand_data(
+            lm.landmark,
+            results.multi_handedness[0].classification[0].score if results.multi_handedness else 1.0,
+        )
+
+    def _detect_tasks(self, rgb_frame: np.ndarray) -> HandData:
+        rgb_contig = np.ascontiguousarray(rgb_frame)
+        mp_image = _mp_image.Image(_mp_image.ImageFormat.SRGB, rgb_contig)
+        result = self._tasks_landmarker.detect(mp_image)
+        if not result.hand_landmarks:
+            return HandData(
+                detected=False, x=0, y=0, x_offset=0, y_offset=0,
+                normalized_x=0.0, normalized_y=0.0, confidence=0.0, hand_size=0.0,
+            )
+        landmarks = result.hand_landmarks[0]
+        confidence = (
+            result.handedness[0][0].score
+            if result.handedness and result.handedness[0]
+            else 0.5
+        )
+        # Tasks API uses NormalizedLandmark; convert to (x,y) tuples
+        palm_points = [
+            (landmarks[0].x or 0, landmarks[0].y or 0),
+            (landmarks[5].x or 0, landmarks[5].y or 0),
+            (landmarks[9].x or 0, landmarks[9].y or 0),
+            (landmarks[13].x or 0, landmarks[13].y or 0),
+            (landmarks[17].x or 0, landmarks[17].y or 0),
+        ]
+        xs = [p[0] for p in palm_points]
+        ys = [p[1] for p in palm_points]
+        avg_x = sum(xs) / len(xs)
+        avg_y = sum(ys) / len(ys)
+        pixel_x = int(avg_x * self.frame_width)
+        pixel_y = int(avg_y * self.frame_height)
+        x_offset = pixel_x - self.center_x
+        y_offset = pixel_y - self.center_y
+        normalized_x = max(-1.0, min(1.0, x_offset / self.center_x))
+        normalized_y = max(-1.0, min(1.0, y_offset / self.center_y))
+        x_coords = [int((p.x or 0) * self.frame_width) for p in landmarks]
+        y_coords = [int((p.y or 0) * self.frame_height) for p in landmarks]
+        width = max(x_coords) - min(x_coords)
+        height = max(y_coords) - min(y_coords)
+        hand_size = float(width * height)
+        return HandData(
+            detected=True,
+            x=pixel_x, y=pixel_y,
+            x_offset=x_offset, y_offset=y_offset,
+            normalized_x=normalized_x, normalized_y=normalized_y,
+            confidence=confidence,
+            hand_size=hand_size,
+        )
+
+    def _landmarks_to_hand_data(self, landmarks, confidence: float) -> HandData:
+        """Convert legacy landmark list to HandData."""
+        palm_indices = [0, 5, 9, 13, 17]
+        avg_x = sum(landmarks[i].x for i in palm_indices) / len(palm_indices)
+        avg_y = sum(landmarks[i].y for i in palm_indices) / len(palm_indices)
+        pixel_x = int(avg_x * self.frame_width)
+        pixel_y = int(avg_y * self.frame_height)
+        x_offset = pixel_x - self.center_x
+        y_offset = pixel_y - self.center_y
+        normalized_x = max(-1.0, min(1.0, x_offset / self.center_x))
+        normalized_y = max(-1.0, min(1.0, y_offset / self.center_y))
+        x_coords = [int(lm.x * self.frame_width) for lm in landmarks]
+        y_coords = [int(lm.y * self.frame_height) for lm in landmarks]
+        width = max(x_coords) - min(x_coords)
+        height = max(y_coords) - min(y_coords)
+        hand_size = float(width * height)
+        return HandData(
+            detected=True,
+            x=pixel_x, y=pixel_y,
+            x_offset=x_offset, y_offset=y_offset,
+            normalized_x=normalized_x, normalized_y=normalized_y,
+            confidence=confidence,
+            hand_size=hand_size,
+        )
 
     def draw_debug_info(self, frame: np.ndarray, hand_data: HandData) -> np.ndarray:
         """
@@ -187,14 +246,15 @@ class HandTracker:
         cv2.line(frame, (self.center_x - 20, self.center_y), (self.center_x + 20, self.center_y), (0, 255, 0), 2)
         cv2.line(frame, (self.center_x, self.center_y - 20), (self.center_x, self.center_y + 20), (0, 255, 0), 2)
 
-        # Re-process frame for drawing (necessary for landmark visualization)
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.mp_hands.process(rgb_frame)
-
-        # Draw MediaPipe hand landmarks and connections if detected
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                self.mp_drawing.draw_landmarks(frame, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
+        # Draw MediaPipe hand landmarks (legacy only; Tasks API skips landmark viz)
+        if _USE_LEGACY:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self._legacy_hands.process(rgb_frame)
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    self._mp_drawing.draw_landmarks(
+                        frame, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS
+                    )
 
         # Draw palm position and data if hand is detected
         if hand_data.detected:
@@ -226,10 +286,12 @@ class HandTracker:
     def release(self):
         """Clean up resources: close camera/Tello and MediaPipe."""
         if not self.is_tello:
-            self.camera.release()  # Release webcam
-        # Note: Tello cleanup is handled in main()
-        self.mp_hands.close()  # Close MediaPipe
-        cv2.destroyAllWindows()  # Close OpenCV windows
+            self.camera.release()
+        if self._legacy_hands is not None:
+            self._legacy_hands.close()
+        if self._tasks_landmarker is not None:
+            self._tasks_landmarker.close()
+        cv2.destroyAllWindows()
 
 
 def main():
@@ -237,19 +299,15 @@ def main():
     print("Initializing Tello hand tracker...")
 
     t = Tello()
-    
+    tracker = None
+
     try:
         t.connect()
         print("Battery:", t.get_battery(), "%")
-        # t.takeoff()  # Uncomment to make drone take off
-        # t.move_up(100)  # Move up for better view
-
         t.streamon()
         frame_read = t.get_frame_read()
 
-        # Create tracker with Tello
         tracker = HandTracker(camera_source=t)
-
         print("Hand tracker ready. Press 'q' to quit.")
         print("Position your palm in front of the Tello camera for detection.")
 
@@ -276,8 +334,8 @@ def main():
                 break
 
     finally:
-        # Clean up
-        tracker.release()
+        if tracker is not None:
+            tracker.release()
         try:
             t.streamoff()
         except Exception as e:
