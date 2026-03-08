@@ -1,132 +1,222 @@
+"""
+Single-person persistent tracking with:
+- initial color lock
+- persistent CSRT/KCF tracker after lock
+- MediaPipe pose refinement + reacquisition
+- improved depth estimate using torso width
+- optional one-point auto calibration to approximate centimeters
+
+Controls:
+- Press 'q' to quit
+- Press 'd' to toggle debug overlay
+"""
+
 import cv2
 import mediapipe as mp
-import numpy as np
-import time
-import math
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
+import numpy as np
 from djitellopy import Tello
+import time
+import math
 
 
 @dataclass
-class TrackData:
-    detected: bool = False
-    locked: bool = False
-    state: str = "SEARCHING"
-
-    x: int = 0
-    y: int = 0
-    norm_x: float = 0.0
-    norm_y: float = 0.0
+class PoseData:
+    detected: bool
+    x: int
+    y: int
+    x_offset: int
+    y_offset: int
+    normalized_x: float
+    normalized_y: float
+    confidence: float
+    pose_size: float
+    depth: float                      # estimated distance; cm if calibrated, otherwise relative
+    landmarks_3d: Optional[list]
 
     bbox: Optional[Tuple[int, int, int, int]] = None
-    confidence: float = 0.0
-
-    depth: float = 0.0              # cm if calibrated, relative otherwise
-    scale_px: float = 0.0           # body scale used for depth
-    depth_calibrated: bool = False
-
+    target_locked: bool = False
     color_found: bool = False
     color_center: Optional[Tuple[int, int]] = None
     color_area: float = 0.0
 
+    torso_width_px: float = 0.0
+    depth_is_calibrated: bool = False
+    state: str = "SEARCHING_FOR_COLOR"
 
-class SinglePersonTracker:
+
+class PoseTracker3D:
     def __init__(
         self,
-        source: Union[int, Tello] = 0,
+        camera_source: Union[int, Tello] = 0,
         target_color: str = "magenta",
-        min_color_area: int = 120,
-        search_pad: int = 180,
-        reacquire_pad: int = 120,
-        refresh_sec: float = 0.75,
+        min_color_area: int = 500,
+        search_padding: int = 180,
+        reacquire_padding: int = 120,
+        tracker_refresh_interval: float = 0.75,
+        auto_calibrate_depth: bool = True,
         reference_distance_cm: float = 150.0,
-        auto_calibrate: bool = True,
-        depth_alpha: float = 0.25,
+        depth_smoothing_alpha: float = 0.25,
     ):
-        self.is_tello = isinstance(source, Tello)
-        self.tello = source if self.is_tello else None
-        self.frame_read = None
+        """
+        Args:
+            camera_source: webcam index or Tello object
+            target_color: 'magenta', 'green', 'cyan', or 'orange'
+            min_color_area: minimum contour area for first lock
+            search_padding: ROI half-size around color blob for initial pose lock
+            reacquire_padding: ROI expansion around last bbox when reacquiring
+            tracker_refresh_interval: how often to refresh visual tracker from pose bbox
+            auto_calibrate_depth: if True, first successful lock assumes the user is at reference_distance_cm
+            reference_distance_cm: used for one-point depth calibration on first lock
+            depth_smoothing_alpha: EMA smoothing for depth estimate
+        """
+        self.is_tello = isinstance(camera_source, Tello)
 
-        if not self.is_tello:
-            self.cap = cv2.VideoCapture(source)
-            if not self.cap.isOpened():
-                raise RuntimeError(f"Could not open camera source {source}")
+        if self.is_tello:
+            self.tello = camera_source
+            self.frame_read = None
+        else:
+            self.camera = cv2.VideoCapture(camera_source)
+            if not self.camera.isOpened():
+                raise RuntimeError(f"Could not open camera source {camera_source}")
 
-        self.pose = mp.solutions.pose.Pose(
+        # MediaPipe legacy solutions API to minimize code churn
+        self.mp_pose = mp.solutions.pose.Pose(
             static_image_mode=False,
             model_complexity=1,
             smooth_landmarks=True,
             enable_segmentation=False,
+            smooth_segmentation=True,
             min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_tracking_confidence=0.5
         )
 
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+
+        # Lock / tracker state
+        self.has_target_lock = False
+        self.visual_tracker = None
+        self.last_bbox: Optional[Tuple[int, int, int, int]] = None
+        self.last_seen_time: float = 0.0
+        self.last_tracker_refresh_time: float = 0.0
+
+        # Color-lock state
         self.min_color_area = min_color_area
-        self.search_pad = search_pad
-        self.reacquire_pad = reacquire_pad
-        self.refresh_sec = refresh_sec
-        self.lower_hsv, self.upper_hsv = self._hsv_range(target_color)
+        self.search_padding = search_padding
+        self.reacquire_padding = reacquire_padding
+        self.tracker_refresh_interval = tracker_refresh_interval
+        self.lower_hsv, self.upper_hsv = self._get_hsv_range(target_color)
 
-        self.locked = False
-        self.tracker = None
-        self.last_bbox = None
-        self.last_refresh = 0.0
-
+        # Depth calibration / smoothing
+        self.auto_calibrate_depth = auto_calibrate_depth
         self.reference_distance_cm = reference_distance_cm
-        self.auto_calibrate = auto_calibrate
-        self.depth_scale = None      # reference_distance_cm * body_scale_px
-        self.depth_alpha = depth_alpha
-        self.smooth_depth = None
+        self.depth_scale: Optional[float] = None   # distance_cm * torso_width_px from first lock
+        self.depth_smoothing_alpha = depth_smoothing_alpha
+        self.smoothed_depth: Optional[float] = None
+        self.last_torso_width_px: float = 0.0
 
-    # ---------- basic helpers ----------
+    # -------------------------------------------------------------------------
+    # Utility helpers
+    # -------------------------------------------------------------------------
 
-    def _hsv_range(self, name: str):
-        presets = {
-            "magenta": (np.array([120, 70, 70]), np.array([175, 255, 255])),
-            "green":   (np.array([40, 80, 80]),  np.array([85, 255, 255])),
-            "cyan":    (np.array([80, 90, 90]),  np.array([105, 255, 255])),
-            "orange":  (np.array([5, 120, 120]), np.array([20, 255, 255])),
-        }
-        return presets.get(name.lower(), presets["magenta"])
-
-    def set_custom_hsv(self, lower, upper):
-        self.lower_hsv = np.array(lower, dtype=np.uint8)
-        self.upper_hsv = np.array(upper, dtype=np.uint8)
-
-    def _clip(self, x1, y1, x2, y2, shape):
-        h, w = shape[:2]
-        return (
-            max(0, min(w - 1, x1)),
-            max(0, min(h - 1, y1)),
-            max(1, min(w, x2)),
-            max(1, min(h, y2)),
+    def _empty_pose(
+        self,
+        color_found: bool = False,
+        color_center: Optional[Tuple[int, int]] = None,
+        color_area: float = 0.0,
+        state: str = "SEARCHING_FOR_COLOR",
+    ) -> PoseData:
+        last_depth = self.smoothed_depth if self.smoothed_depth is not None else 0.0
+        return PoseData(
+            detected=False,
+            x=0,
+            y=0,
+            x_offset=0,
+            y_offset=0,
+            normalized_x=0.0,
+            normalized_y=0.0,
+            confidence=0.0,
+            pose_size=0.0,
+            depth=last_depth,
+            landmarks_3d=None,
+            bbox=None,
+            target_locked=self.has_target_lock,
+            color_found=color_found,
+            color_center=color_center,
+            color_area=color_area,
+            torso_width_px=self.last_torso_width_px,
+            depth_is_calibrated=self.depth_scale is not None,
+            state=state,
         )
 
-    def _dist(self, a, b):
-        return float(math.hypot(a[0] - b[0], a[1] - b[1]))
+    def _get_hsv_range(self, color_name: str) -> Tuple[np.ndarray, np.ndarray]:
+        color_name = color_name.lower()
+        ranges = {
+            "magenta": (np.array([125, 100, 100]), np.array([170, 255, 255])),
+            "green":   (np.array([40, 80, 80]),    np.array([85, 255, 255])),
+            "cyan":    (np.array([80, 100, 100]),  np.array([105, 255, 255])),
+            "orange":  (np.array([5, 120, 120]),   np.array([20, 255, 255])),
+        }
+        if color_name not in ranges:
+            print(f"Unknown color '{color_name}', defaulting to magenta.")
+            color_name = "magenta"
+        return ranges[color_name]
 
-    def _smooth(self, value: float) -> float:
-        if value <= 0:
-            return self.smooth_depth if self.smooth_depth is not None else 0.0
-        if self.smooth_depth is None:
-            self.smooth_depth = value
+    def set_custom_hsv(self, lower_hsv: Tuple[int, int, int], upper_hsv: Tuple[int, int, int]):
+        self.lower_hsv = np.array(lower_hsv, dtype=np.uint8)
+        self.upper_hsv = np.array(upper_hsv, dtype=np.uint8)
+
+    def _clip_roi(self, x1: int, y1: int, x2: int, y2: int, frame_shape) -> Tuple[int, int, int, int]:
+        h, w = frame_shape[:2]
+        x1 = max(0, min(w - 1, x1))
+        y1 = max(0, min(h - 1, y1))
+        x2 = max(1, min(w, x2))
+        y2 = max(1, min(h, y2))
+        return x1, y1, x2, y2
+
+    def _dist(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
+        return float(math.hypot(p1[0] - p2[0], p1[1] - p2[1]))
+
+    def _smooth_depth(self, raw_depth: float) -> float:
+        if raw_depth <= 0:
+            return self.smoothed_depth if self.smoothed_depth is not None else 0.0
+
+        if self.smoothed_depth is None:
+            self.smoothed_depth = raw_depth
         else:
-            a = self.depth_alpha
-            self.smooth_depth = a * value + (1 - a) * self.smooth_depth
-        return self.smooth_depth
+            a = self.depth_smoothing_alpha
+            self.smoothed_depth = a * raw_depth + (1.0 - a) * self.smoothed_depth
+        return self.smoothed_depth
 
-    def _depth_from_scale(self, body_scale_px: float, allow_calibration=False) -> float:
-        if body_scale_px <= 1:
-            return self.smooth_depth if self.smooth_depth is not None else 0.0
+    def _estimate_depth_from_torso(self, torso_width_px: float, allow_calibration: bool = False) -> float:
+        """
+        Estimate distance from torso width in pixels.
+        - If calibrated, returns approx centimeters.
+        - Otherwise returns a stable relative estimate.
+        """
+        if torso_width_px <= 1:
+            return self.smoothed_depth if self.smoothed_depth is not None else 0.0
 
-        if allow_calibration and self.auto_calibrate and self.depth_scale is None:
-            self.depth_scale = self.reference_distance_cm * body_scale_px
+        self.last_torso_width_px = torso_width_px
 
-        raw = (self.depth_scale / body_scale_px) if self.depth_scale else (1000.0 / body_scale_px)
-        return self._smooth(raw)
+        # One-point calibration at first strong lock
+        if allow_calibration and self.auto_calibrate_depth and self.depth_scale is None:
+            self.depth_scale = self.reference_distance_cm * torso_width_px
 
-    def _tracker_factory(self):
+        if self.depth_scale is not None:
+            raw_depth = self.depth_scale / torso_width_px
+        else:
+            # Relative estimate only
+            raw_depth = 1000.0 / torso_width_px
+
+        return self._smooth_depth(raw_depth)
+
+    def _create_tracker(self):
+        """
+        OpenCV tracker creation compatible with both newer and legacy namespaces.
+        """
         if hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerCSRT_create"):
             return cv2.legacy.TrackerCSRT_create()
         if hasattr(cv2, "TrackerCSRT_create"):
@@ -135,34 +225,23 @@ class SinglePersonTracker:
             return cv2.legacy.TrackerKCF_create()
         if hasattr(cv2, "TrackerKCF_create"):
             return cv2.TrackerKCF_create()
-        raise RuntimeError("No CSRT/KCF tracker found in this OpenCV build.")
+        raise RuntimeError(
+            "No supported OpenCV tracker found. Need CSRT or KCF available in this OpenCV build."
+        )
 
-    def _init_tracker(self, frame, bbox):
+    def _init_tracker_from_bbox(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]):
         x1, y1, x2, y2 = bbox
         w = max(1, x2 - x1)
         h = max(1, y2 - y1)
-        self.tracker = self._tracker_factory()
-        self.tracker.init(frame, (x1, y1, w, h))
-        self.locked = True
+
+        self.visual_tracker = self._create_tracker()
+        self.visual_tracker.init(frame, (x1, y1, w, h))
+        self.has_target_lock = True
         self.last_bbox = bbox
-        self.last_refresh = time.time()
+        self.last_seen_time = time.time()
+        self.last_tracker_refresh_time = self.last_seen_time
 
-    # ---------- frame + color ----------
-
-    def _get_frame(self):
-        if self.is_tello:
-            if self.frame_read is None:
-                self.frame_read = self.tello.get_frame_read()
-            frame = self.frame_read.frame
-            if frame is None:
-                return None
-        else:
-            ok, frame = self.cap.read()
-            if not ok:
-                return None
-        return cv2.flip(frame, 1)
-
-    def _find_color(self, frame):
+    def _find_target_color(self, frame: np.ndarray) -> Tuple[Optional[Tuple[int, int]], float]:
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.lower_hsv, self.upper_hsv)
 
@@ -174,354 +253,577 @@ class SinglePersonTracker:
         if not contours:
             return None, 0.0
 
-        c = max(contours, key=cv2.contourArea)
-        area = float(cv2.contourArea(c))
+        largest = max(contours, key=cv2.contourArea)
+        area = float(cv2.contourArea(largest))
         if area < self.min_color_area:
             return None, area
 
-        x, y, w, h = cv2.boundingRect(c)
+        x, y, w, h = cv2.boundingRect(largest)
         return (x + w // 2, y + h // 2), area
 
-    # ---------- pose logic ----------
-
-    def _state_from_bbox(self, frame, bbox, state="TRACKER_ONLY"):
+    def _pose_from_bbox(self, frame: np.ndarray, bbox: Tuple[int, int, int, int], state: str) -> PoseData:
         h, w = frame.shape[:2]
-        cx_frame, cy_frame = w // 2, h // 2
-        x1, y1, x2, y2 = self._clip(*bbox, frame.shape)
+        frame_cx = w // 2
+        frame_cy = h // 2
+        # if this call originates from tracker-only fallback and
+        # we haven't refined with pose data, do not claim detection
+        tracker_only = (state == "TRACKER_ONLY")
 
-        cx = (x1 + x2) // 2
-        cy = (y1 + y2) // 2
-        bw = max(1, x2 - x1)
-        bh = max(1, y2 - y1)
+        x1, y1, x2, y2 = bbox
+        # preserve original size for clipping check
+        orig_w = max(1, x2 - x1)
+        orig_h = max(1, y2 - y1)
+        orig_area = orig_w * orig_h
 
-        # fallback scale from height, not width
-        body_scale_px = max(1.0, bh * 0.45)
-        depth = self._depth_from_scale(body_scale_px, allow_calibration=False)
+        x1, y1, x2, y2 = self._clip_roi(x1, y1, x2, y2, frame.shape)
+        px = (x1 + x2) // 2
+        py = (y1 + y2) // 2
 
-        return TrackData(
+        x_offset = px - frame_cx
+        y_offset = py - frame_cy
+
+        normalized_x = x_offset / frame_cx if frame_cx > 0 else 0.0
+        normalized_y = y_offset / frame_cy if frame_cy > 0 else 0.0
+        normalized_x = max(-1.0, min(1.0, normalized_x))
+        normalized_y = max(-1.0, min(1.0, normalized_y))
+
+        bbox_w = max(1, x2 - x1)
+        bbox_h = max(1, y2 - y1)
+        pose_size = float(bbox_w * bbox_h)
+
+        # if most of the bbox has been clipped (object left frame), treat as lost
+        clipped_area = bbox_w * bbox_h
+        if orig_area > 0 and clipped_area < 0.2 * orig_area:
+            return self._empty_pose(state=state)
+
+        # tracker-only mode shouldn't drive confidence, drop detection entirely
+        if tracker_only:
+            return self._empty_pose(state=state)
+
+        # Fallback depth if we only have tracker bbox that frame
+        torso_width_px = max(1.0, bbox_w * 0.35)
+        depth = self._estimate_depth_from_torso(torso_width_px, allow_calibration=False)
+
+        # confidence scaled by fraction of original bbox still visible
+        if orig_area > 0:
+            conf = 0.75 * (clipped_area / orig_area)
+            conf = max(0.0, min(1.0, conf))
+        else:
+            conf = 0.0
+
+        return PoseData(
             detected=True,
-            locked=self.locked,
-            state=state,
-            x=cx,
-            y=cy,
-            norm_x=max(-1.0, min(1.0, (cx - cx_frame) / max(1, cx_frame))),
-            norm_y=max(-1.0, min(1.0, (cy - cy_frame) / max(1, cy_frame))),
-            bbox=(x1, y1, x2, y2),
-            confidence=0.75,
+            x=px,
+            y=py,
+            x_offset=x_offset,
+            y_offset=y_offset,
+            normalized_x=normalized_x,
+            normalized_y=normalized_y,
+            confidence=conf,
+            pose_size=pose_size,
             depth=depth,
-            scale_px=body_scale_px,
-            depth_calibrated=self.depth_scale is not None,
+            landmarks_3d=None,
+            bbox=(x1, y1, x2, y2),
+            target_locked=self.has_target_lock,
+            color_found=False,
+            color_center=None,
+            color_area=0.0,
+            torso_width_px=torso_width_px,
+            depth_is_calibrated=self.depth_scale is not None,
+            state=state,
         )
 
-    def _pose_in_roi(self, frame, roi, color_center=None, color_area=0.0, calibrate=False, state="POSE"):
-        H, W = frame.shape[:2]
-        frame_cx, frame_cy = W // 2, H // 2
+    def _run_pose_on_roi(
+        self,
+        frame: np.ndarray,
+        roi: Tuple[int, int, int, int],
+        color_center: Optional[Tuple[int, int]] = None,
+        color_area: float = 0.0,
+        allow_depth_calibration: bool = False,
+        state: str = "POSE_REFINEMENT",
+    ) -> PoseData:
+        full_h, full_w = frame.shape[:2]
+        frame_center_x = full_w // 2
+        frame_center_y = full_h // 2
 
         x1, y1, x2, y2 = roi
-        crop = frame[y1:y2, x1:x2]
-        if crop.size == 0:
-            return TrackData(state=state, locked=self.locked, color_found=color_center is not None,
-                             color_center=color_center, color_area=color_area)
+        roi_frame = frame[y1:y2, x1:x2]
+        if roi_frame.size == 0:
+            return self._empty_pose(
+                color_found=color_center is not None,
+                color_center=color_center,
+                color_area=color_area,
+                state=state,
+            )
 
-        rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-        res = self.pose.process(rgb)
-        if not res.pose_landmarks:
-            return TrackData(state=state, locked=self.locked, color_found=color_center is not None,
-                             color_center=color_center, color_area=color_area)
+        roi_h, roi_w = roi_frame.shape[:2]
+        rgb_roi = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB)
+        results = self.mp_pose.process(rgb_roi)
 
-        lm = res.pose_landmarks.landmark
-        P = mp.solutions.pose.PoseLandmark
+        if not results.pose_landmarks:
+            return self._empty_pose(
+                color_found=color_center is not None,
+                color_center=color_center,
+                color_area=color_area,
+                state=state,
+            )
 
-        idx_ls, idx_rs = P.LEFT_SHOULDER.value, P.RIGHT_SHOULDER.value
-        idx_lh, idx_rh = P.LEFT_HIP.value, P.RIGHT_HIP.value
+        landmarks = results.pose_landmarks.landmark
 
-        pts = [(int(p.x * (x2 - x1)) + x1, int(p.y * (y2 - y1)) + y1) for p in lm]
-        xs = [p[0] for p in pts]
-        ys = [p[1] for p in pts]
-        bbox = self._clip(min(xs), min(ys), max(xs), max(ys), frame.shape)
+        # Torso center from shoulders + hips
+        idx_ls = mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value
+        idx_rs = mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value
+        idx_lh = mp.solutions.pose.PoseLandmark.LEFT_HIP.value
+        idx_rh = mp.solutions.pose.PoseLandmark.RIGHT_HIP.value
 
-        ls, rs, lh, rh = pts[idx_ls], pts[idx_rs], pts[idx_lh], pts[idx_rh]
+        key_indices = [idx_ls, idx_rs, idx_lh, idx_rh]
+        key_landmarks = [landmarks[i] for i in key_indices]
 
-        shoulder_mid = ((ls[0] + rs[0]) // 2, (ls[1] + rs[1]) // 2)
-        hip_mid = ((lh[0] + rh[0]) // 2, (lh[1] + rh[1]) // 2)
+        avg_x = sum(lm.x for lm in key_landmarks) / len(key_landmarks)
+        avg_y = sum(lm.y for lm in key_landmarks) / len(key_landmarks)
+
+        pixel_x = x1 + int(avg_x * roi_w)
+        pixel_y = y1 + int(avg_y * roi_h)
+
+        x_offset = pixel_x - frame_center_x
+        y_offset = pixel_y - frame_center_y
+
+        normalized_x = x_offset / frame_center_x if frame_center_x > 0 else 0.0
+        normalized_y = y_offset / frame_center_y if frame_center_y > 0 else 0.0
+        normalized_x = max(-1.0, min(1.0, normalized_x))
+        normalized_y = max(-1.0, min(1.0, normalized_y))
+
+        # Landmark bbox
+        x_coords = [int(lm.x * roi_w) for lm in landmarks]
+        y_coords = [int(lm.y * roi_h) for lm in landmarks]
+        bbox_x1 = x1 + min(x_coords)
+        bbox_y1 = y1 + min(y_coords)
+        bbox_x2 = x1 + max(x_coords)
+        bbox_y2 = y1 + max(y_coords)
+        bbox_x1, bbox_y1, bbox_x2, bbox_y2 = self._clip_roi(
+            bbox_x1, bbox_y1, bbox_x2, bbox_y2, frame.shape
+        )
+        bbox = (bbox_x1, bbox_y1, bbox_x2, bbox_y2)
+
+        bbox_w = max(1, bbox_x2 - bbox_x1)
+        bbox_h = max(1, bbox_y2 - bbox_y1)
+        pose_size = float(bbox_w * bbox_h)
+
+        # Confidence proxy from visibility
+        visibility_vals = [float(getattr(lm, "visibility", 0.0)) for lm in key_landmarks]
+        confidence = float(np.mean(visibility_vals))
+
+        # 3D landmarks if available
+        landmarks_3d = None
+        if results.pose_world_landmarks:
+            landmarks_3d = [(lm.x, lm.y, lm.z) for lm in results.pose_world_landmarks.landmark]
+
+        # Pixel-space torso width for stable distance estimate
+        ls = (x1 + int(landmarks[idx_ls].x * roi_w), y1 + int(landmarks[idx_ls].y * roi_h))
+        rs = (x1 + int(landmarks[idx_rs].x * roi_w), y1 + int(landmarks[idx_rs].y * roi_h))
+        lh = (x1 + int(landmarks[idx_lh].x * roi_w), y1 + int(landmarks[idx_lh].y * roi_h))
+        rh = (x1 + int(landmarks[idx_rh].x * roi_w), y1 + int(landmarks[idx_rh].y * roi_h))
 
         shoulder_width = self._dist(ls, rs)
-        torso_height = self._dist(shoulder_mid, hip_mid)
+        hip_width = self._dist(lh, rh)
+        torso_candidates = [v for v in [shoulder_width, hip_width] if v > 1.0]
+        torso_width_px = float(np.mean(torso_candidates)) if torso_candidates else max(1.0, bbox_w * 0.35)
 
-        # Rotation-robust body scale:
-        # height dominates, width only helps a bit when frontal
-        if torso_height <= 1.0:
-            torso_height = max(1.0, (bbox[3] - bbox[1]) * 0.45)
+        depth = self._estimate_depth_from_torso(
+            torso_width_px,
+            allow_calibration=allow_depth_calibration
+        )
 
-        frontal_ratio = shoulder_width / max(torso_height, 1.0)
-        if frontal_ratio > 0.6:
-            body_scale_px = 0.75 * torso_height + 0.25 * shoulder_width
-        else:
-            body_scale_px = torso_height
-
-        depth = self._depth_from_scale(body_scale_px, allow_calibration=calibrate)
-
-        center_x = int((ls[0] + rs[0] + lh[0] + rh[0]) / 4)
-        center_y = int((ls[1] + rs[1] + lh[1] + rh[1]) / 4)
-
-        vis = []
-        for i in [idx_ls, idx_rs, idx_lh, idx_rh]:
-            vis.append(float(getattr(lm[i], "visibility", 0.0)))
-        confidence = float(np.mean(vis))
-
+        # For first lock, make sure the color is actually in or near the person box
         if color_center is not None:
             cx, cy = color_center
-            bx1, by1, bx2, by2 = bbox
             margin = 25
-            inside = (bx1 - margin <= cx <= bx2 + margin) and (by1 - margin <= cy <= by2 + margin)
-            if not inside:
-                return TrackData(
-                    state="COLOR_NOT_ON_PERSON",
-                    locked=self.locked,
+            color_inside_bbox = (
+                bbox_x1 - margin <= cx <= bbox_x2 + margin and
+                bbox_y1 - margin <= cy <= bbox_y2 + margin
+            )
+            if not color_inside_bbox:
+                return self._empty_pose(
                     color_found=True,
                     color_center=color_center,
                     color_area=color_area,
+                    state="COLOR_FOUND_BUT_NOT_ON_PERSON",
                 )
 
-        return TrackData(
+        return PoseData(
             detected=True,
-            locked=self.locked,
-            state=state,
-            x=center_x,
-            y=center_y,
-            norm_x=max(-1.0, min(1.0, (center_x - frame_cx) / max(1, frame_cx))),
-            norm_y=max(-1.0, min(1.0, (center_y - frame_cy) / max(1, frame_cy))),
-            bbox=bbox,
+            x=pixel_x,
+            y=pixel_y,
+            x_offset=x_offset,
+            y_offset=y_offset,
+            normalized_x=normalized_x,
+            normalized_y=normalized_y,
             confidence=confidence,
+            pose_size=pose_size,
             depth=depth,
-            scale_px=body_scale_px,
-            depth_calibrated=self.depth_scale is not None,
+            landmarks_3d=landmarks_3d,
+            bbox=bbox,
+            target_locked=self.has_target_lock,
             color_found=color_center is not None,
             color_center=color_center,
             color_area=color_area,
+            torso_width_px=torso_width_px,
+            depth_is_calibrated=self.depth_scale is not None,
+            state=state,
         )
 
-    # ---------- main update ----------
+    # -------------------------------------------------------------------------
+    # Main frame acquisition
+    # -------------------------------------------------------------------------
 
-    def update(self):
-        frame = self._get_frame()
-        if frame is None:
-            return None, TrackData(state="NO_FRAME", locked=self.locked)
+    def get_pose_data(self) -> Tuple[Optional[np.ndarray], PoseData]:
+        if self.is_tello:
+            if self.frame_read is None:
+                self.frame_read = self.tello.get_frame_read()
+            frame = self.frame_read.frame
+            if frame is None:
+                return None, self._empty_pose(state="NO_FRAME")
+        else:
+            ret, frame = self.camera.read()
+            if not ret:
+                return None, self._empty_pose(state="NO_FRAME")
 
+        frame = cv2.flip(frame, 1)
+        pose_data = self._detect_pose(frame)
+        return frame, pose_data
+
+    # -------------------------------------------------------------------------
+    # Core logic
+    # -------------------------------------------------------------------------
+
+    def _detect_pose(self, frame: np.ndarray) -> PoseData:
         now = time.time()
         h, w = frame.shape[:2]
 
-        # After first lock, ignore color forever
-        if self.locked and self.tracker is not None:
-            ok, tracked = self.tracker.update(frame)
+        # ---------------------------------------------------------------------
+        # MODE 1: After first lock, ignore color forever
+        # ---------------------------------------------------------------------
+        if self.has_target_lock and self.visual_tracker is not None:
+            ok, tracked = self.visual_tracker.update(frame)
 
             if ok:
                 x, y, bw, bh = [int(v) for v in tracked]
-                bbox = self._clip(x, y, x + bw, y + bh, frame.shape)
+                bbox = self._clip_roi(x, y, x + bw, y + bh, frame.shape)
                 self.last_bbox = bbox
+                self.last_seen_time = now
 
+                # Try pose refinement around tracked bbox
                 x1, y1, x2, y2 = bbox
-                roi = self._clip(x1 - 50, y1 - 50, x2 + 50, y2 + 50, frame.shape)
-                data = self._pose_in_roi(frame, roi, calibrate=False, state="TRACKING")
+                pad = 50
+                rx1, ry1, rx2, ry2 = self._clip_roi(
+                    x1 - pad, y1 - pad, x2 + pad, y2 + pad, frame.shape
+                )
 
-                if data.detected and data.bbox is not None:
-                    data.locked = True
-                    self.last_bbox = data.bbox
+                pose = self._run_pose_on_roi(
+                    frame,
+                    (rx1, ry1, rx2, ry2),
+                    allow_depth_calibration=False,
+                    state="TRACKER_LOCKED",
+                )
 
-                    if now - self.last_refresh >= self.refresh_sec:
-                        self._init_tracker(frame, data.bbox)
-                        self.last_refresh = now
-                    return frame, data
+                if pose.detected and pose.bbox is not None:
+                    pose.target_locked = True
 
-                return frame, self._state_from_bbox(frame, bbox, state="TRACKER_ONLY")
+                    # Refresh tracker periodically from pose bbox to reduce drift
+                    if (now - self.last_tracker_refresh_time) >= self.tracker_refresh_interval:
+                        self._init_tracker_from_bbox(frame, pose.bbox)
+                        self.last_tracker_refresh_time = now
 
-            # local reacquire near last bbox
+                    self.last_bbox = pose.bbox
+                    self.last_seen_time = now
+                    return pose
+
+                # If pose refine failed, still follow the tracked bbox
+                return self._pose_from_bbox(frame, bbox, state="TRACKER_ONLY")
+
+            # -----------------------------------------------------------------
+            # Tracker failed -> try local pose reacquisition near last bbox
+            # -----------------------------------------------------------------
             if self.last_bbox is not None:
-                x1, y1, x2, y2 = self.last_bbox
-                roi = self._clip(x1 - self.reacquire_pad, y1 - self.reacquire_pad,
-                                 x2 + self.reacquire_pad, y2 + self.reacquire_pad, frame.shape)
-                data = self._pose_in_roi(frame, roi, calibrate=False, state="REACQUIRE_LOCAL")
-                if data.detected and data.bbox is not None:
-                    self._init_tracker(frame, data.bbox)
-                    data.locked = True
-                    return frame, data
+                bx1, by1, bx2, by2 = self.last_bbox
+                rx1, ry1, rx2, ry2 = self._clip_roi(
+                    bx1 - self.reacquire_padding,
+                    by1 - self.reacquire_padding,
+                    bx2 + self.reacquire_padding,
+                    by2 + self.reacquire_padding,
+                    frame.shape
+                )
 
-            # full frame fallback because you only care about one person
-            data = self._pose_in_roi(frame, (0, 0, w, h), calibrate=False, state="REACQUIRE_FULL")
-            if data.detected and data.bbox is not None:
-                self._init_tracker(frame, data.bbox)
-                data.locked = True
-                return frame, data
+                pose = self._run_pose_on_roi(
+                    frame,
+                    (rx1, ry1, rx2, ry2),
+                    allow_depth_calibration=False,
+                    state="REACQUIRE_LOCAL",
+                )
+                if pose.detected and pose.bbox is not None:
+                    self._init_tracker_from_bbox(frame, pose.bbox)
+                    pose.target_locked = True
+                    return pose
 
-            return frame, TrackData(state="LOST", locked=True, depth=self.smooth_depth or 0.0,
-                                    depth_calibrated=self.depth_scale is not None)
+            # -----------------------------------------------------------------
+            # If only one person matters, full-frame pose fallback is useful
+            # -----------------------------------------------------------------
+            pose = self._run_pose_on_roi(
+                frame,
+                (0, 0, w, h),
+                allow_depth_calibration=False,
+                state="REACQUIRE_FULL_FRAME",
+            )
+            if pose.detected and pose.bbox is not None:
+                self._init_tracker_from_bbox(frame, pose.bbox)
+                pose.target_locked = True
+                return pose
 
-        # Before first lock, require color
-        color_center, color_area = self._find_color(frame)
+            return self._empty_pose(state="LOST_AFTER_LOCK")
+
+        # ---------------------------------------------------------------------
+        # MODE 2: Before first lock, require target color
+        # ---------------------------------------------------------------------
+        color_center, color_area = self._find_target_color(frame)
+
         if color_center is not None:
             cx, cy = color_center
-            roi = self._clip(cx - self.search_pad, cy - self.search_pad,
-                             cx + self.search_pad, cy + self.search_pad, frame.shape)
-            data = self._pose_in_roi(
+            x1, y1, x2, y2 = self._clip_roi(
+                cx - self.search_padding,
+                cy - self.search_padding,
+                cx + self.search_padding,
+                cy + self.search_padding,
+                frame.shape
+            )
+
+            pose = self._run_pose_on_roi(
                 frame,
-                roi,
+                (x1, y1, x2, y2),
                 color_center=color_center,
                 color_area=color_area,
-                calibrate=True,
-                state="LOCKING",
+                allow_depth_calibration=True,
+                state="FIRST_LOCK_FROM_COLOR",
             )
-            if data.detected and data.bbox is not None:
-                self._init_tracker(frame, data.bbox)
-                data.locked = True
-                data.state = "LOCKED"
-                return frame, data
 
-            return frame, TrackData(
-                state="COLOR_FOUND",
-                locked=False,
+            if pose.detected and pose.bbox is not None:
+                self._init_tracker_from_bbox(frame, pose.bbox)
+                pose.target_locked = True
+                pose.state = "LOCKED"
+                return pose
+
+            return self._empty_pose(
                 color_found=True,
                 color_center=color_center,
                 color_area=color_area,
-                depth=self.smooth_depth or 0.0,
-                depth_calibrated=self.depth_scale is not None,
+                state="COLOR_FOUND_SEARCHING_PERSON",
             )
 
-        return frame, TrackData(
-            state="SEARCHING",
-            locked=False,
-            depth=self.smooth_depth or 0.0,
-            depth_calibrated=self.depth_scale is not None,
-        )
+        return self._empty_pose(state="SEARCHING_FOR_COLOR")
 
-    # ---------- drawing / cleanup ----------
+    # -------------------------------------------------------------------------
+    # Debug drawing
+    # -------------------------------------------------------------------------
 
-    def draw(self, frame, data: TrackData):
+    def draw_debug(self, frame: np.ndarray, pose_data: PoseData) -> Optional[np.ndarray]:
         if frame is None:
             return None
 
         h, w = frame.shape[:2]
-        cx, cy = w // 2, h // 2
-        cv2.line(frame, (cx - 20, cy), (cx + 20, cy), (0, 255, 0), 2)
-        cv2.line(frame, (cx, cy - 20), (cx, cy + 20), (0, 255, 0), 2)
+        center_x = w // 2
+        center_y = h // 2
 
-        if data.color_found and data.color_center is not None:
-            x, y = data.color_center
-            cv2.circle(frame, (x, y), 8, (255, 0, 255), -1)
-            cv2.putText(frame, "COLOR", (x + 8, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 0, 255), 2)
+        # Center crosshair
+        cv2.line(frame, (center_x - 20, center_y), (center_x + 20, center_y), (0, 255, 0), 2)
+        cv2.line(frame, (center_x, center_y - 20), (center_x, center_y + 20), (0, 255, 0), 2)
 
-        if data.bbox is not None:
-            x1, y1, x2, y2 = data.bbox
+        # Draw detected color
+        if pose_data.color_found and pose_data.color_center is not None:
+            cx, cy = pose_data.color_center
+            cv2.circle(frame, (cx, cy), 10, (255, 0, 255), -1)
+            cv2.putText(frame, "COLOR", (cx + 10, cy - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+
+        # Draw bbox
+        if pose_data.bbox is not None:
+            x1, y1, x2, y2 = pose_data.bbox
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
-        if data.detected:
-            cv2.circle(frame, (data.x, data.y), 7, (0, 255, 0), -1)
-            cv2.line(frame, (cx, cy), (data.x, data.y), (255, 0, 0), 2)
+        # Draw center point
+        if pose_data.detected:
+            cv2.circle(frame, (pose_data.x, pose_data.y), 8, (0, 255, 0), -1)
+            cv2.line(frame, (center_x, center_y), (pose_data.x, pose_data.y), (255, 0, 0), 2)
 
-        unit = "cm" if data.depth_calibrated else "rel"
-        lines = [
-            f"State: {data.state}",
-            f"Locked: {data.locked}",
-            f"Detected: {data.detected}",
-            f"Color: {data.color_found} area={data.color_area:.1f}",
-            f"Center: ({data.x}, {data.y})",
-            f"Norm: ({data.norm_x:.2f}, {data.norm_y:.2f})",
-            f"Conf: {data.confidence:.2f}",
-            f"Scale: {data.scale_px:.1f}px",
-            f"Depth: {data.depth:.1f} {unit}",
+        depth_label = "cm" if pose_data.depth_is_calibrated else "rel"
+        info_lines = [
+            f"State: {pose_data.state}",
+            f"Detected: {pose_data.detected}",
+            f"Target Locked: {pose_data.target_locked}",
+            f"Color Found: {pose_data.color_found}",
+            f"Color Area: {pose_data.color_area:.1f}",
+            f"Center: ({pose_data.x}, {pose_data.y})",
+            f"Offset: ({pose_data.x_offset}, {pose_data.y_offset})",
+            f"Normalized: ({pose_data.normalized_x:.2f}, {pose_data.normalized_y:.2f})",
+            f"Confidence: {pose_data.confidence:.2f}",
+            f"Torso Width px: {pose_data.torso_width_px:.1f}",
+            f"Depth: {pose_data.depth:.1f} {depth_label}",
+            f"Calibrated: {pose_data.depth_is_calibrated}",
         ]
 
-        for i, line in enumerate(lines):
-            (tw, th), _ = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            y0 = 10 + i * 24
-            cv2.rectangle(frame, (10, y0), (18 + tw, y0 + th + 8), (0, 0, 0), -1)
-            cv2.putText(frame, line, (14, y0 + th + 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        for i, text in enumerate(info_lines):
+            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)
+            y_top = 10 + i * 24
+            cv2.rectangle(frame, (10, y_top), (10 + tw + 8, y_top + th + 8), (0, 0, 0), -1)
+            cv2.putText(frame, text, (14, y_top + th + 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 1)
 
         return frame
 
     def release(self):
-        if not self.is_tello and hasattr(self, "cap"):
-            self.cap.release()
+        if not self.is_tello and hasattr(self, "camera"):
+            self.camera.release()
 
 
-def run_demo(use_tello=True):
-    tracker = None
-    tello = None
-    debug = True
+# =============================================================================
+# TEST FUNCTIONS
+# =============================================================================
+
+def test_webcam():
+    print("Testing persistent single-person tracking with webcam...")
+    print("Press 'q' to quit, 'd' to toggle debug drawing")
+    print("For first lock: show the target color (default magenta) near your chest.")
+    print("If auto calibration is on, stand roughly at the known reference distance during first lock.")
+
+    tracker = PoseTracker3D(
+        camera_source=0,
+        target_color="magenta",
+        auto_calibrate_depth=True,
+        reference_distance_cm=150.0,
+    )
+
+    debug_mode = True
     frame_count = 0
 
     try:
-        if use_tello:
-            tello = Tello()
-            print("Connecting to Tello...")
-            tello.connect()
-            print(f"Battery: {tello.get_battery()}%")
-            tello.streamon()
-            time.sleep(2)
-            tello.takeoff()
-            time.sleep(1)
-            tello.move_up(60)
-            time.sleep(1)
-
-            tracker = SinglePersonTracker(
-                source=tello,
-                target_color="magenta",
-                min_color_area=120,
-                reference_distance_cm=150.0,
-            )
-        else:
-            tracker = SinglePersonTracker(
-                source=0,
-                target_color="magenta",
-                min_color_area=120,
-                reference_distance_cm=150.0,
-            )
-
-        print("Press q to quit, d to toggle debug.")
-        print("Show the color once near your chest to get the first lock.")
-
         while True:
-            frame, data = tracker.update()
+            frame, pose_data = tracker.get_pose_data()
+
             if frame is not None:
-                show = tracker.draw(frame.copy(), data) if debug else frame
-                cv2.imshow("Single Person Tracker", show)
+                display = tracker.draw_debug(frame.copy(), pose_data) if debug_mode else frame
+                cv2.imshow("Persistent Single-Person Tracking", display)
 
             key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
+            if key == ord('q'):
                 break
-            elif key == ord("d"):
-                debug = not debug
+            elif key == ord('d'):
+                debug_mode = not debug_mode
+                print(f"Debug mode: {'ON' if debug_mode else 'OFF'}")
 
             frame_count += 1
             if frame_count % 30 == 0:
-                unit = "cm" if data.depth_calibrated else "rel"
+                depth_label = "cm" if pose_data.depth_is_calibrated else "rel"
                 print(
-                    f"[{frame_count}] state={data.state} "
-                    f"locked={data.locked} detected={data.detected} "
-                    f"depth={data.depth:.1f} {unit}"
+                    f"[{frame_count}] state={pose_data.state} | "
+                    f"locked={pose_data.target_locked} | "
+                    f"detected={pose_data.detected} | "
+                    f"depth={pose_data.depth:.1f} {depth_label}"
                 )
 
-    finally:
-        if tello is not None:
-            try:
-                tello.land()
-            except:
-                pass
-            try:
-                tello.streamoff()
-            except:
-                pass
-            try:
-                tello.end()
-            except:
-                pass
+    except KeyboardInterrupt:
+        print("Interrupted by user")
 
+    finally:
+        tracker.release()
+        cv2.destroyAllWindows()
+        print("Webcam test complete.")
+
+
+def test_tello():
+    print("Testing persistent single-person tracking with Tello...")
+    print("Press 'q' to quit, 'd' to toggle debug drawing")
+    print("For first lock: show the target color (default magenta) near your chest.")
+    print("If auto calibration is on, stand roughly at the known reference distance during first lock.")
+
+    tello = Tello()
+    tracker = None
+
+    try:
+        print("Connecting to Tello...")
+        tello.connect()
+        print(f"Battery: {tello.get_battery()}%")
+
+        print("Starting video stream...")
+        tello.streamon()
+        time.sleep(2)
+
+        # Small indoor takeoff
+        tello.takeoff()
+        time.sleep(1)
+        tello.move_up(60)
+        time.sleep(1)
+
+        tracker = PoseTracker3D(
+            camera_source=tello,
+            target_color="magenta",
+            auto_calibrate_depth=True,
+            reference_distance_cm=150.0,
+        )
+
+        debug_mode = True
+        frame_count = 0
+
+        print("Tracking active. Show the color once to lock.")
+
+        while True:
+            frame, pose_data = tracker.get_pose_data()
+
+            if frame is not None:
+                display = tracker.draw_debug(frame.copy(), pose_data) if debug_mode else frame
+                cv2.imshow("Tello Persistent Single-Person Tracking", display)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord('d'):
+                debug_mode = not debug_mode
+                print(f"Debug mode: {'ON' if debug_mode else 'OFF'}")
+
+            frame_count += 1
+            if frame_count % 30 == 0:
+                depth_label = "cm" if pose_data.depth_is_calibrated else "rel"
+                print(
+                    f"[{frame_count}] state={pose_data.state} | "
+                    f"locked={pose_data.target_locked} | "
+                    f"detected={pose_data.detected} | "
+                    f"depth={pose_data.depth:.1f} {depth_label}"
+                )
+
+    except KeyboardInterrupt:
+        print("Interrupted by user")
+
+    finally:
+        print("Cleaning up...")
+        try:
+            tello.land()
+        except:
+            pass
+        try:
+            tello.streamoff()
+        except:
+            pass
+        try:
+            tello.end()
+        except:
+            pass
         if tracker is not None:
             tracker.release()
-
         cv2.destroyAllWindows()
+        print("Tello test complete.")
 
 
 if __name__ == "__main__":
     import sys
-    use_tello = not (len(sys.argv) > 1 and sys.argv[1].lower() == "webcam")
-    run_demo(use_tello=use_tello)
+
+    if len(sys.argv) > 1 and sys.argv[1].lower() == "webcam":
+        test_webcam()
+    else:
+        test_tello()
